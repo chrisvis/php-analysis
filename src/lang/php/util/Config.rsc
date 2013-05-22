@@ -9,7 +9,7 @@ public loc rgenCwd = parserLoc + "PHP-Parser/lib/Rascal";
 public loc baseLoc = |file:///ufs/chrism/php/PHPAnalysis|;
 public loc parsedDir = baseLoc + "parsed";
 public loc statsDir = baseLoc + "stats";
-public loc corpusRoot = baseLoc + "corpus";
+public loc corpusRoot = baseLoc + "corpus-icse13";
 public loc countsDir = baseLoc + "counts";
 
 public bool useBinaries = true;
