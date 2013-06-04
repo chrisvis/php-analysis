@@ -5,7 +5,7 @@ import lang::php::util::Utils;
 import Node;
 import IO;
 import Type;
-
+import List;
 //import lang::php::analysis::includes::PropagateStringVars;
 //import lang::php::analysis::evaluators::ScalarEval;
 
@@ -19,18 +19,49 @@ alias System = map[loc fileloc, Script scr];
  
 //map[node,node] cfgmap;
 
+public bool isScalarArray(arr) {
+	for (/param:"arrayElement"(_,valArrEl,_) := arr) {
+		if (scalar(_) !:= valArrEl) {
+			return false;
+		}
+	}
+	return true;		
+}
+
 public void main() {
 	//loc file = |file:///ufs/chrism/php/thesis/examples/call_user_func.php|;
-	loc file = |file:///ufs/chrism/php/thesis/examples/simple_assign.php|;
+	loc file = |file:///ufs/chrism/php/thesis/examples/simple.php|;
 	Script scr = loadPHPFile(file);
 	
 	//cfgmap = buildCFGs(scr);
 	//
 	//iprintln(typeOf(cfgmap));
 	//iprintln(cfgmap);
-	scr = delAnnotationsRec(scr);
-	iprintln(scr);
+	
+	//scr = delAnnotationsRec(scr);
+	//iprintln(scr);
+//
+	//sys = loadBinary("CodeIgniter", "2.1.2");
+	//sys = loadBinary("PEAR", "1.9.4");
+	//iprintln(sys);
+	
+	// find call_user_func in foreach loop
+	
+	for (n:"foreach"(arr,_,_,val,[M*,/c:"call"("name"("name"("call_user_func")),[/args:val,N*]),O*]):= scr) {
+		println("foreach statement");
+	
+		iprintln(n);
+		println("=============");
+		iprintln(val);
+		println("scalar array? <isScalarArray(arr)>");
+		iprintln(c);
 
+	}
+	
+	
+	return;
+	
+	
 	visit (scr) {
 		case n:call(name(name("func")),_) : {
 			iprintln(n);
@@ -56,23 +87,16 @@ public void main() {
 	}
 
 	/*
-	//iprintln(ast);
-	//iprint(ast);
+
 	map[loc,node] scripts = (|file:///ufs/chrism/php/thesis/examples/call_user_func.php|:ast);
 	solve (scripts) {
 		scripts = evalAllScalarsAndInlineUniques(scripts,|file:///ufs/chrism/php/thesis/examples/|);
 		scripts = evalStringVars(scripts);
 	}
-	iprint(scripts);
+
 	//iprint(evalStringVars(ast));
 
 	assignments = [a | /a:assign(var(name(name(_))),_) := ast];
-	iprintln(assignments);
-
-	println(1);
-	println(readFile(|file:///ufs/chrism/php/thesis/examples/call_user_func.php|(0,0,<2,0>,<2,0>)));
-	println(2);
-	println(readFile(|file:///ufs/chrism/php/thesis/examples/call_user_func.php|(7,63,<2,0>,<2,0>)));
 */
 }
 

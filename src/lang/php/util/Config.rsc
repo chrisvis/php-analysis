@@ -12,5 +12,5 @@ public loc statsDir = baseLoc + "stats";
 public loc corpusRoot = baseLoc + "corpus-icse13";
 public loc countsDir = baseLoc + "counts";
 
-public bool useBinaries = true;
+public bool useBinaries = false;
 

@@ -68,7 +68,7 @@ public Script evalStringVars(Script scr) {
 	try {
 		for (np <- cfgs) {
 			dynamicIncludes = { en | en:exprNode(include(ipath,_),_) <- cfgs[np].nodes, scalar(string(str lpath)) !:= ipath };
-			if (size(dynamicIncludes) != 0) {
+			if (size(dynamicIncludes) != 0 || true ) {
 				cfgGraph = cfgAsGraph(cfgs[np]);
 				cfgBackwards = invert(cfgGraph);
 	
@@ -149,19 +149,19 @@ public Script evalStringVars(Script scr) {
 	
 	if (size(labStrings) > 0) {
 		lscr = top-down visit(lscr) {
-			case n:include(ipath,itype) : {
-				if (scalar(string(str lpath)) !:= ipath) {
-					altpath = top-down visit(ipath) {
+			//case n:include(ipath,itype) : {
+			//	if (scalar(string(str lpath)) !:= ipath) {
+			//		altpath = top-down visit(ipath) {
 						case vnode:var(name(name(str vn))) : {
 							if (vnode@lab in labStrings && vn in labStrings[vnode@lab].mappings && unique(uval) := labStrings[vnode@lab].mappings[vn]) {
 								insert(scalar(string(uval)[@at=vnode@at])[@at=vnode@at]);							
 							}
 						}
-					}
-					if (altpath != ipath)
-						insert(include(altpath,itype)[@at=n@at]);
-				}
-			}
+			//		}
+			//		if (altpath != ipath)
+			//			insert(include(altpath,itype)[@at=n@at]);
+			//	}
+			//}
 		}
 	}
 	return stripLabels(lscr);

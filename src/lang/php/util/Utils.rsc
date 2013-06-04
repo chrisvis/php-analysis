@@ -142,8 +142,10 @@ public void buildBinaries() {
 }
 
 public void buildMissingBinaries() {
-	for (product <- getProducts(), version <- getVersions(product))
+	for (product <- getProducts(), version <- getVersions(product)) {
+		println("buildMissingBinaries: <product> <version>");
 		buildMissingBinaries(product, version);
+	}
 }
 
 public void buildNewestBinaries() {
