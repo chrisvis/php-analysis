@@ -30,15 +30,19 @@ public bool isScalarArray(arr) {
 
 public void main() {
 	//loc file = |file:///ufs/chrism/php/thesis/examples/call_user_func.php|;
-	loc file = |file:///ufs/chrism/php/thesis/examples/simple.php|;
+	//loc file = |file:///ufs/chrism/php/thesis/examples/simple.php|;
+	loc file = |file:///ufs/chrism/php/thesis/examples/test_output.php|;
 	Script scr = loadPHPFile(file);
+	scr = delAnnotationsRec(scr);
+		
+	iprintln(scr);
+	return;
 	
 	//cfgmap = buildCFGs(scr);
 	//
 	//iprintln(typeOf(cfgmap));
 	//iprintln(cfgmap);
 	
-	//scr = delAnnotationsRec(scr);
 	//iprintln(scr);
 //
 	//sys = loadBinary("CodeIgniter", "2.1.2");

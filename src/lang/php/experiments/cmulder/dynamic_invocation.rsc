@@ -36,86 +36,123 @@ public callable parseCallable(str arg) {
 
 public rel[str function,loc location,callable argument] importTraces() {
 	loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
-	//traces = { <readTextValueString(#loc,a), b > | < a, b > <- readCSV(#rel[str,str], tracesCsv) };
 	return { <a, readTextValueString(#loc,b), parseCallable(c) > | <a,b,c> <- readCSV(#rel[str function,str location,str argument], tracesCsv) };
 }
 
-public map[loc, node] findOccurences() {
-	ast = loadPHPFile(|file:///ufs/chrism/php/thesis/examples/call_user_func.php|);
-	
-	calls = [c | /c:call(name(name(n)),_) := ast, /^call_user_func/ := n];
-
-	map[loc, node] occurences = ();
-	occurences += (c@at:c | c <- calls);
-	
-	return occurences;
-}
-
-//private
-private Stmt transformCallUserFuncCall(Stmt input) {
-	
-	
-}
-
 public void main() {
-	//iprint(findOccurences());
 	
-	traces = importTraces();
-	iprintln(traces);
-	iprintln(size(traces));
-	iprintln("#eval: <size(traces["eval"])>");
-	iprintln("#call_user_func: <size(traces["call_user_func"])>");
-	iprintln("#call_user_func_array: <size(traces["call_user_func_array"])>");
+	allTraces = importTraces();
+
+	println("#eval: <size(allTraces["eval"])>");
+	println("#call_user_func: <size(allTraces["call_user_func"])>");
+	println("#call_user_func_array: <size(allTraces["call_user_func_array"])>");
 	
 	ast = loadPHPFile(|file:///ufs/chrism/php/thesis/examples/test.php|);
-	
-	//ast = loadPHPFile(|file:///ufs/chrism/php/thesis/examples/test_output.php|);
-	//
-	//iprintln(ast);
-	//return;
-	
-	//iprintln(ast);
-	//return;
-	
-	newAst = visit (ast) {
-		case occurrence:exprstmt(call(name(name("call_user_func")), args)): {
-			occTraces = traces["call_user_func"][occurrence@at];
-			if (all(callable c <- occTraces, callableStr(_) := c)) {
-			 	println("All callableStr");
-			 	iprintln(occTraces);
 
-				//Expr replacement;
-				//iprintln();
-				//Expr variable = top(args);
-				iprintln(top(args));
-				if (actualParameter(variable,_) := top(args)) {
+	newAst = visit (ast) {
+		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
+			
+			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
+
+			if (all(callable c <- tracesForOccurrence, callableStr(_) := c)) {
+			 	println("All callableStr");
+
+			 	iprintln(tracesForOccurrence);
+
+				if (actualParameter(callableArgument,_) := top(args)) {
 					
-					println("JWZ!!!");		
-					if (callableStr(v) <- occTraces) {
-		 		 		replacement = 
-				 		 	\if(
-							  binaryOperation(
-							    variable,
-							    scalar(string(v)),
-							    equal()),
-							
-							  [
-							    exprstmt(call(name(name(v)),[]))
-							  ],
-							  [],
-							  noElse()
-							);
-					 	
-					 	insert replacement;
+					list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
+					
+					for (callableStr(traceValue) <- tracesForOccurrence) {
+					
+						Expr condition = binaryOperation(
+				    		callableArgument,
+					    	scalar(string(traceValue)),
+					    	equal());
+						
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func")), args): {
+								insert call(name(name(traceValue)), tail(args));
+							}
+						};
+						
+						possibilities = possibilities + <condition, [body]>;
 				 	}
-				 	iprintln(replacement);
+				 	
+					insert \if(
+								top(possibilities).cond,
+								top(possibilities).body,
+							    [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)],
+							  	someElse(\else([occurrence]))
+							);
 				}
-			} else if (all(callable c <- occTraces, callableArray(callableClass(_), callableStr(_)) := c)) {
+
+				
+			} else if (all(callable c <- tracesForOccurrence, callableArray(callableClass(_), callableStr(_)) := c)) {
 				println("All callableClass-\>callableStr");
-				iprintln(occTraces);
-			} else if (all(callable c <- occTraces, callableArray(callableStr(_), callableStr(_)) := c)) {
+				iprintln(tracesForOccurrence);
+				
+				if (actualParameter(callableArgument,_) := top(args)) {
+					
+					list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
+					
+					for (callableArray(callableClass(_), callableStr(traceValue)) <- tracesForOccurrence) {
+						
+						// is_array($callableArgument) && sizeof($callableArgument) > 1 && $callableArgument[1] == "traceValue"
+						Expr condition =  
+							binaryOperation(
+						        binaryOperation(
+					          		call(
+	          							name(name("is_array")),
+	          							[actualParameter(callableArgument, false)]
+          							),
+									binaryOperation(
+						            	call(
+											name(name("sizeof")),
+						            		[actualParameter(callableArgument, false)]),
+						            	scalar(integer(1)),
+						            	gt()
+					            	),
+						          	booleanAnd()
+					          	),
+						        binaryOperation(
+				    				fetchArrayDim(
+										callableArgument,
+										someExpr(scalar(integer(1)))
+									),
+					    			scalar(string(traceValue)),
+					    			equal()
+					    		),
+						        booleanAnd()
+					        );
+        						
+						// $callableArgument[0]->traceValue()
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func")), args): {
+								insert methodCall(
+  										fetchArrayDim(
+          									callableArgument,
+          									someExpr(scalar(integer(0)))
+      									),
+        								name(name(traceValue)),
+										tail(args));
+							}
+						};
+						
+						possibilities = possibilities + <condition, [body]>;
+				 	}
+				 	
+					insert \if(
+								top(possibilities).cond,
+								top(possibilities).body,
+							    [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)],
+							  	someElse(\else([occurrence]))
+							);
+				}
+								
+			} else if (all(callable c <- tracesForOccurrence, callableArray(callableStr(_), callableStr(_)) := c)) {
 				println("All callableStr::callableStr");
-				iprintln(occTraces);
+				iprintln(tracesForOccurrence);
 			}
 			
 			// //<- traces["call_user_func"][occurrence@at]) {
@@ -125,21 +162,10 @@ public void main() {
 			
 		}
 	}
-	
+
 	iprintln (newAst);
 	return;
-	//buildBinaries("ZendFramework", "2.0", |file:///ufs/chrism/php/zf2/|);
-	//ast = loadBinary("ZendFramework", "2.0");
-	//iprint(pt);
-	//buildBinaries("Drupal", "7.14");
 
-	ast = loadBinary("ZendFramework", "2.0");
-	//writeFile(|file:///ufs/chrism/data/output1.txt|, ast);
-	//return;
-	//callsAt = [c | c <- calls,  c@at == |file:///ufs/gast698/php/PHPAnalysis/corpus-icse13/CodeIgniter/codeigniter_2.1.2/system/core/CodeIgniter.php|(0,0,<359,0>,<359,0>)]; 
-	//["at"] == |file:///ufs/gast698/php/PHPAnalysis/corpus-icse13/CodeIgniter/codeigniter_2.1.2/system/core/CodeIgniter.php| ) := calls];
-	
-	println("----------------");
 	
 	 
 	calls = [c | /c:call(name(name("call_user_func")), _) := ast ];
