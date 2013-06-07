@@ -2,6 +2,8 @@ module lang::php::experiments::cmulder::dynamic_invocation
 
 import lang::php::ast::AbstractSyntax;
 import lang::php::util::Utils;
+import lang::php::pp::PrettyPrinter;
+import lang::php::ast::NormalizeAST;
 import Node;
 
 import IO;
@@ -20,8 +22,9 @@ data callable =  callableOther()
 	| callableClass(str name)
 	| callableArray( callable class,	callable method);
 
+alias possibilityList = list[tuple[Expr cond, list[Stmt] body]];
 
-public callable parseCallable(str arg) {
+private callable parseCallable(str arg) {
 	switch(arg){
 		case /^'<id:\w+>'$/ : 
 			return callableStr(id);
@@ -34,9 +37,59 @@ public callable parseCallable(str arg) {
 }
 
 
-public rel[str function,loc location,callable argument] importTraces() {
+private rel[str function,loc location,callable argument] importTraces() {
 	loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
 	return { <a, readTextValueString(#loc,b), parseCallable(c) > | <a,b,c> <- readCSV(#rel[str function,str location,str argument], tracesCsv) };
+}
+
+private tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineArray(Expr callableArgument) {
+	Expr objectVar;
+	Expr methodVar;
+	bool inlineArray;
+					
+	if (array([arrayElement(_,obj,_),arrayElement(_,met,_),xs*]) := callableArgument) {
+		objectVar = obj;
+		methodVar = met; 
+		inlineArray = true; 
+		println("inlineArray");
+		iprintln(callableArgument);
+	} else {
+		objectVar = 
+			fetchArrayDim(
+				callableArgument,
+				someExpr(scalar(integer(0)))
+			);
+			
+		methodVar = 
+			fetchArrayDim(
+				callableArgument,
+				someExpr(scalar(integer(1)))
+			);
+		inlineArray = false;
+		println("no inlineArray");
+		iprintln(callableArgument);
+	}
+	
+	return <objectVar, methodVar, inlineArray>;
+}
+
+private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occurrence) {
+	possibilities = dup(possibilities);
+				 	
+ 	list[ElseIf] elseStatements;
+ 	//println("size(possibilities): <size(possibilities)>");
+ 	if (size(possibilities) > 1) {
+ 		elseStatements =  [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)];
+ 	} else {
+ 		elseStatements = [];
+ 	}
+ 	
+	return \if(
+				top(possibilities).cond,
+				top(possibilities).body,
+			    elseStatements,
+			  	someElse(\else([occurrence]))
+			);
 }
 
 public void main() {
@@ -61,8 +114,8 @@ public void main() {
 
 				if (actualParameter(callableArgument,_) := top(args)) {
 					
-					list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
-					
+					//list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
+					possibilityList possibilities = [];
 					for (callableStr(traceValue) <- tracesForOccurrence) {
 					
 						Expr condition = binaryOperation(
@@ -79,12 +132,14 @@ public void main() {
 						possibilities = possibilities + <condition, [body]>;
 				 	}
 				 	
+				 	insert createIfFromPossibilities(possibilities, occurrence);
+				 	/*
 					insert \if(
 								top(possibilities).cond,
 								top(possibilities).body,
 							    [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)],
 							  	someElse(\else([occurrence]))
-							);
+							);*/
 				}
 
 				
@@ -94,60 +149,81 @@ public void main() {
 				
 				if (actualParameter(callableArgument,_) := top(args)) {
 					
-					list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
+					callableArgumentProps = checkForInlineArray(callableArgument);
+					
+					//list[tuple[Expr cond, list[Stmt] body]] possibilities = [];
+					possibilityList possibilities = [];
 					
 					for (callableArray(callableClass(_), callableStr(traceValue)) <- tracesForOccurrence) {
 						
-						// is_array($callableArgument) && sizeof($callableArgument) > 1 && $callableArgument[1] == "traceValue"
-						Expr condition =  
-							binaryOperation(
-						        binaryOperation(
-					          		call(
-	          							name(name("is_array")),
-	          							[actualParameter(callableArgument, false)]
-          							),
-									binaryOperation(
-						            	call(
-											name(name("sizeof")),
-						            		[actualParameter(callableArgument, false)]),
-						            	scalar(integer(1)),
-						            	gt()
-					            	),
-						          	booleanAnd()
-					          	),
-						        binaryOperation(
-				    				fetchArrayDim(
-										callableArgument,
-										someExpr(scalar(integer(1)))
-									),
+						Expr cond;
+					        
+				        if (callableArgumentProps.inlineArray) {
+				        	// method == "traceValue"
+				        	cond = 
+			        			binaryOperation(
+				    				callableArgumentProps.methodVar,
 					    			scalar(string(traceValue)),
 					    			equal()
-					    		),
-						        booleanAnd()
-					        );
+					    		);
+				        } else {
+							// is_array($callableArgument) && sizeof($callableArgument) > 1 && $callableArgument[1] == "traceValue"
+			         		cond =  
+								binaryOperation(
+							        binaryOperation(
+						          		call(
+		          							name(name("is_array")),
+		          							[actualParameter(callableArgument, false)]
+	          							),
+										binaryOperation(
+							            	call(
+												name(name("sizeof")),
+							            		[actualParameter(callableArgument, false)]),
+							            	scalar(integer(1)),
+							            	gt()
+						            	),
+							          	booleanAnd()
+						          	),
+							        binaryOperation(
+					    				callableArgumentProps.methodVar,
+						    			scalar(string(traceValue)),
+						    			equal()
+						    		),
+							        booleanAnd()
+						        );
+				        }
         						
-						// $callableArgument[0]->traceValue()
+						// objectVar->traceValue()
 						Stmt body = visit (occurrence) {
 							case call(name(name("call_user_func")), args): {
 								insert methodCall(
-  										fetchArrayDim(
-          									callableArgument,
-          									someExpr(scalar(integer(0)))
-      									),
+  										callableArgumentProps.objectVar,
         								name(name(traceValue)),
 										tail(args));
 							}
 						};
 						
-						possibilities = possibilities + <condition, [body]>;
+						possibilities = possibilities + <cond, [body]>;
+				 	}
+				 	
+				 	//possibilities = dup(possibilities);
+				 	
+				 	insert createIfFromPossibilities(possibilities, occurrence);
+				 	/*
+				 	list[ElseIf] elseStatements;
+				 	//println("size(possibilities): <size(possibilities)>");
+				 	if (size(possibilities) > 1) {
+				 		elseStatements =  [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)];
+				 	} else {
+				 		elseStatements = [];
 				 	}
 				 	
 					insert \if(
 								top(possibilities).cond,
 								top(possibilities).body,
-							    [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)],
+							    elseStatements,
 							  	someElse(\else([occurrence]))
-							);
+							);*/
 				}
 								
 			} else if (all(callable c <- tracesForOccurrence, callableArray(callableStr(_), callableStr(_)) := c)) {
@@ -163,7 +239,8 @@ public void main() {
 		}
 	}
 
-	iprintln (newAst);
+	//iprintln (newAst);
+	writeFile(|file:///export/scratch1/chrism/testOutput.php|, "\<?\n" + pp(normalizeIf(newAst)));
 	return;
 
 	
