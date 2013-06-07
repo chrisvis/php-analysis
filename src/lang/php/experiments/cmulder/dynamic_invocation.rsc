@@ -115,7 +115,8 @@ public void main() {
 						Expr condition = binaryOperation(
 				    		callableArgument,
 					    	scalar(string(traceValue)),
-					    	equal());
+					    	equal()
+				    	);
 						
 						Stmt body = visit (occurrence) {
 							case call(name(name("call_user_func")), args): {
@@ -195,6 +196,84 @@ public void main() {
 			} else if (all(callable c <- tracesForOccurrence, callableArray(callableStr(_), callableStr(_)) := c)) {
 				println("All callableStr::callableStr");
 				iprintln(tracesForOccurrence);
+				
+				if (actualParameter(callableArgument,_) := top(args)) {
+					
+					callableArgumentProps = checkForInlineArray(callableArgument);
+					possibilityList possibilities = [];
+					
+					for (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) <- tracesForOccurrence) {
+						
+						Expr cond;
+				        if (callableArgumentProps.inlineArray) {
+				        	
+				        	cond = 
+				        		binaryOperation(
+				        			binaryOperation(
+					    				callableArgumentProps.objectVar,
+						    			scalar(string(traceValueClass)),
+						    			equal()
+						    		), 
+						    		binaryOperation(
+					    				callableArgumentProps.methodVar,
+						    			scalar(string(traceValueMethod)),
+						    			equal()
+						    		),
+							        booleanAnd()
+						        );
+						        
+				        } else {
+							// is_array($callableArgument) && sizeof($callableArgument) > 2 
+							//		&& $callableArgument[0] == "traceValueClass" && $callableArgument[1] == "traceValueMethod" 
+			         		cond =  
+								binaryOperation(
+							        binaryOperation(
+						          		binaryOperation( 
+						          			call(
+			          							name(name("is_array")),
+			          							[actualParameter(callableArgument, false)]
+		          							),
+											binaryOperation(
+								            	call(
+													name(name("sizeof")),
+								            		[actualParameter(callableArgument, false)]),
+								            	scalar(integer(1)),
+								            	gt()
+							            	),
+								          	booleanAnd()
+						            	),
+								        binaryOperation(
+						    				callableArgumentProps.objectVar,
+							    			scalar(string(traceValueClass)),
+							    			equal()
+							    		),
+							          	booleanAnd()
+	
+						          	),
+							        binaryOperation(
+					    				callableArgumentProps.methodVar,
+						    			scalar(string(traceValueMethod)),
+						    			equal()
+						    		),
+							        booleanAnd()
+						        );
+				        }
+        						
+						// objectVar::traceValue()
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func")), args): {
+								insert staticCall(
+  										name(name(traceValueClass)),
+        								name(name(traceValueMethod)),
+										tail(args));
+							}
+						};
+						
+						possibilities = possibilities + <cond, [body]>;
+				 	}
+
+				 	insert createIfFromPossibilities(possibilities, occurrence);	
+			 	}			
 			}
 			
 		}
