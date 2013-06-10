@@ -1,10 +1,12 @@
 module lang::php::experiments::cmulder::dynamic_invocation
 
+import lang::php::util::System;
 import lang::php::ast::AbstractSyntax;
 import lang::php::util::Utils;
 import lang::php::pp::PrettyPrinter;
 import lang::php::ast::NormalizeAST;
 import Node;
+import lang::php::analysis::includes::ResolveIncludes;
 
 import IO;
 import ValueIO;
@@ -91,13 +93,43 @@ private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occur
 			);
 }
 
-public void main() {
+public System replaceStaticCallUserFuncUsage(System sys) {
+	sysWithIncludes = resolveIncludesWithVars(sys, |file:///ufs/chrism/php/thesis/examples/testSystem|);
+		
+	newSys = visit (sysWithIncludes) {
+
+		case match:exprstmt(/call(name(name("call_user_func")), [actualParameter(scalar(string(functionName)),_), xs*])): {
+			println(functionName);
+			replacement = visit(match) {
+				case call(name(name("call_user_func")), args): { 
+					insert call(name(name(functionName)), tail(args));
+				}
+			}
+			insert replacement;
+		}
+	}
+
+	return newSys;
 	
+}
+
+private void generateTestOuput(Script scr, loc outputFile) {
+	writeFile(outputFile, "\<?php\n<pp(scr)>");
+}
+
+private void generateTestOuput(System sys, loc outputFile) {
+	str output = "\<?php\n";
+	for(file <- sys) {
+		output = output + "// <file>\n\n";
+		output = output + "<pp(sys[file])> \n// EOF <file>\n\n";
+	}
+	writeFile(outputFile, output);
+}
+
+private System replaceCallUserFunByTraces(System sys) {
 	allTraces = importTraces();
 
-	ast = loadPHPFile(|file:///ufs/chrism/php/thesis/examples/test.php|);
-
-	newAst = visit (ast) {
+	newSys = visit (sys) {
 		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
 			
 			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
@@ -278,9 +310,16 @@ public void main() {
 			
 		}
 	}
+	return newSys;
+}
+public void main() {
+	sys = loadPHPFiles(|file:///ufs/chrism/php/thesis/examples/testSystem|);
 
-	println (newAst);
-	writeFile(|file:///export/scratch1/chrism/testOutput.php|, "\<?\n" + pp(normalizeIf(newAst)));
+	sys = replaceStaticCallUserFuncUsage(sys);
+	sys = replaceCallUserFunByTraces(sys);
+		
+	generateTestOuput(sys, |file:///ufs/chrism/php/thesis/examples/testSystem.php|);
+
 	return;
 
 }
