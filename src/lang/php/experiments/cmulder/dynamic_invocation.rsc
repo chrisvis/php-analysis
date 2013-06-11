@@ -14,6 +14,7 @@ import lang::csv::IO;
 import util::Math;
 import Type;
 import Set;
+import String;
 import List;
 
 data callable =  callableOther()
@@ -75,9 +76,9 @@ private tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineAr
 }
 
 private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occurrence) {
-	possibilities = dup(possibilities);
-				 	
  	list[ElseIf] elseStatements;
+
+	possibilities = dup(possibilities);
 
  	if (size(possibilities) > 1) {
  		elseStatements =  [elseIf(possibility.cond, possibility.body) | possibility <- tail(possibilities)];
@@ -94,9 +95,7 @@ private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occur
 }
 
 public System replaceStaticCallUserFuncUsage(System sys) {
-	sysWithIncludes = resolveIncludesWithVars(sys, |file:///ufs/chrism/php/thesis/examples/testSystem|);
-		
-	newSys = visit (sysWithIncludes) {
+	sys = replaceVisit:visit (sys) {
 
 		case match:exprstmt(/call(name(name("call_user_func")), [actualParameter(scalar(string(functionName)),_), xs*])): {
 			println(functionName);
@@ -107,10 +106,24 @@ public System replaceStaticCallUserFuncUsage(System sys) {
 			}
 			insert replacement;
 		}
+		case match:exprstmt(/call(name(name("call_user_func")), [actualParameter(array([arrayElement(_, scalar(string(className)),_),arrayElement(_, scalar(string(methodName)),_),xs*]),_), ys*])): {
+			println("<className>::<methodName>");
+
+			if (contains(methodName, "::")) {
+				fail replaceVisit;
+			}
+
+			replacement = visit(match) {
+				case call(name(name("call_user_func")), args): { 
+					insert staticCall(name(name(className)), name(name(methodName)), tail(args));
+				}
+			}
+			insert replacement;
+		}
+			
 	}
 
-	return newSys;
-	
+	return sys;
 }
 
 private void generateTestOuput(Script scr, loc outputFile) {
@@ -129,7 +142,7 @@ private void generateTestOuput(System sys, loc outputFile) {
 private System replaceCallUserFunByTraces(System sys) {
 	allTraces = importTraces();
 
-	newSys = visit (sys) {
+	sys = visit (sys) {
 		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
 			
 			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
@@ -310,16 +323,19 @@ private System replaceCallUserFunByTraces(System sys) {
 			
 		}
 	}
-	return newSys;
+	return sys;
 }
-public void main() {
-	sys = loadPHPFiles(|file:///ufs/chrism/php/thesis/examples/testSystem|);
 
+public void main() {
+	loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem|;
+	sys = loadPHPFiles(systemPath);
+
+	sys = resolveIncludesWithVars(sys, systemPath);
+	
 	sys = replaceStaticCallUserFuncUsage(sys);
 	sys = replaceCallUserFunByTraces(sys);
 		
 	generateTestOuput(sys, |file:///ufs/chrism/php/thesis/examples/testSystem.php|);
 
 	return;
-
 }
