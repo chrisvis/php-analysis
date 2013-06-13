@@ -171,10 +171,8 @@ private System replaceEvalsByTraces(System sys, traceList allTraces) {
 			    	scalar(string(traceValue)),
 			    	equal()
 		    	);
-		    	iprintln(traceValue);
-		    	iprintln(parsePHPString(traceValue));
+
 		    	if (script(body) := parsePHPString(traceValue)) {
-		    		println("in if");
 		    		//FIXME: no support for return value of eval()
 		    		possibilities = possibilities + <condition, body>;
 		    	}
@@ -189,6 +187,19 @@ private System replaceEvalsByTraces(System sys, traceList allTraces) {
 	}
 
 	return sys;
+}
+
+public Expr combineBoolExprs([Expr singleExpr]) {
+	return singleExpr;
+}
+
+public Expr combineBoolExprs(list[Expr] exprs) {
+	return 
+		binaryOperation(
+			top(exprs),
+			combineBoolExprs(tail(exprs)),
+			booleanAnd()
+		);
 }
 
 private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
@@ -236,53 +247,51 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 					
 					for (callableArray(callableClass(_), callableStr(traceValue)) <- tracesForOccurrence) {
 						
-						Expr cond;
-				        if (callableArgumentProps.inlineArray) {
-				        	// method == "traceValue"
-				        	cond = 
-			        			binaryOperation(
-				    				callableArgumentProps.methodVar,
-					    			scalar(string(traceValue)),
-					    			equal()
-					    		);
-				        } else {
-							// is_array($callableArgument) && sizeof($callableArgument) > 1 && $callableArgument[1] == "traceValue"
-			         		cond =  
+						list[Expr] conds = [];
+
+				        if (!callableArgumentProps.inlineArray) {
+							//  is_array($callableArgument) && sizeof($callableArgument) > 1
+			         		conds = conds + [   
+				          		call(
+          							name(name("is_array")),
+          							[actualParameter(callableArgument, false)]
+      							),
 								binaryOperation(
-							        binaryOperation(
-						          		call(
-		          							name(name("is_array")),
-		          							[actualParameter(callableArgument, false)]
-	          							),
-										binaryOperation(
-							            	call(
-												name(name("sizeof")),
-							            		[actualParameter(callableArgument, false)]),
-							            	scalar(integer(1)),
-							            	gt()
-						            	),
-							          	booleanAnd()
-						          	),
-							        binaryOperation(
-					    				callableArgumentProps.methodVar,
-						    			scalar(string(traceValue)),
-						    			equal()
-						    		),
-							        booleanAnd()
-						        );
+					            	call(
+										name(name("sizeof")),
+					            		[actualParameter(callableArgument, false)]),
+					            	scalar(integer(1)),
+					            	gt()
+				            	)
+				    		];
 				        }
+				        
+				        // is_object(callableArgumentProps.objectVar) && callableArgumentProps.methodVar == "traceValue"
+				        conds = conds + [
+				        	call(
+								name(name("is_object")),
+      							[actualParameter(callableArgumentProps.objectVar, false)]
+  							),
+		        			binaryOperation(
+			    				callableArgumentProps.methodVar,
+				    			scalar(string(traceValue)),
+				    			equal()
+			    			)
+		    			];
+				        	
         						
 						// objectVar->traceValue()
 						Stmt body = visit (occurrence) {
 							case call(name(name("call_user_func")), args): {
 								insert methodCall(
-  										callableArgumentProps.objectVar,
-        								name(name(traceValue)),
-										tail(args));
+									callableArgumentProps.objectVar,
+    								name(name(traceValue)),
+									tail(args)
+								);
 							}
 						};
 						
-						possibilities = possibilities + <cond, [body]>;
+						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
 
 				 	insert createIfFromPossibilities(possibilities, occurrence);
@@ -299,72 +308,50 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 					
 					for (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) <- tracesForOccurrence) {
 						
-						Expr cond;
-				        if (callableArgumentProps.inlineArray) {
-				        	
-				        	cond = 
-				        		binaryOperation(
-				        			binaryOperation(
-					    				callableArgumentProps.objectVar,
-						    			scalar(string(traceValueClass)),
-						    			equal()
-						    		), 
-						    		binaryOperation(
-					    				callableArgumentProps.methodVar,
-						    			scalar(string(traceValueMethod)),
-						    			equal()
-						    		),
-							        booleanAnd()
-						        );
-						        
-				        } else {
+						list[Expr] conds = [];
+				        
+				        if (!callableArgumentProps.inlineArray){
 							// is_array($callableArgument) && sizeof($callableArgument) > 2 
-							//		&& $callableArgument[0] == "traceValueClass" && $callableArgument[1] == "traceValueMethod" 
-			         		cond =  
+			         		conds = conds + [ 
+			          			call(
+          							name(name("is_array")),
+          							[actualParameter(callableArgument, false)]
+      							),
 								binaryOperation(
-							        binaryOperation(
-						          		binaryOperation( 
-						          			call(
-			          							name(name("is_array")),
-			          							[actualParameter(callableArgument, false)]
-		          							),
-											binaryOperation(
-								            	call(
-													name(name("sizeof")),
-								            		[actualParameter(callableArgument, false)]),
-								            	scalar(integer(1)),
-								            	gt()
-							            	),
-								          	booleanAnd()
-						            	),
-								        binaryOperation(
-						    				callableArgumentProps.objectVar,
-							    			scalar(string(traceValueClass)),
-							    			equal()
-							    		),
-							          	booleanAnd()
-	
-						          	),
-							        binaryOperation(
-					    				callableArgumentProps.methodVar,
-						    			scalar(string(traceValueMethod)),
-						    			equal()
-						    		),
-							        booleanAnd()
-						        );
+					            	call(
+										name(name("sizeof")),
+					            		[actualParameter(callableArgument, false)]),
+					            	scalar(integer(1)),
+					            	gt()
+				            	)
+				    		];
 				        }
-        						
+				        // callableArgumentProps.objectVar == "traceValueClass" && callableArgumentProps.methodVar == "traceValueMethod"
+			        	conds = conds + [ 
+		        			binaryOperation(
+			    				callableArgumentProps.objectVar,
+				    			scalar(string(traceValueClass)),
+				    			equal()
+				    		), 
+				    		binaryOperation(
+			    				callableArgumentProps.methodVar,
+				    			scalar(string(traceValueMethod)),
+				    			equal()
+				    		)
+					    ];
+			        
 						// objectVar::traceValue()
 						Stmt body = visit (occurrence) {
 							case call(name(name("call_user_func")), args): {
 								insert staticCall(
-  										name(name(traceValueClass)),
-        								name(name(traceValueMethod)),
-										tail(args));
+									name(name(traceValueClass)),
+    								name(name(traceValueMethod)),
+									tail(args)
+								);
 							}
 						};
 						
-						possibilities = possibilities + <cond, [body]>;
+						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
 
 				 	insert createIfFromPossibilities(possibilities, occurrence);	
