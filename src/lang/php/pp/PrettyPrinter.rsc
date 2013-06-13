@@ -327,7 +327,7 @@ public str pp(do(Expr cond, list[Stmt] body)) =
 	'}";
 
 //	| echo(list[Expr] exprs)
-public str pp(echo(list[Expr] exprs)) = "echo(<intercalate(".",[pp(e)|e<-exprs])>)";
+public str pp(echo(list[Expr] exprs)) = "echo(<intercalate(".",[pp(e)|e<-exprs])>);";
 
 //	| exprstmt(Expr expr)
 public str pp(exprstmt(Expr expr)) = "<pp(expr)>;";
@@ -487,7 +487,8 @@ public str pp(\case(someExpr(Expr e), list[Stmt] body)) =
 //public data ElseIf = elseIf(Expr cond, list[Stmt] body);
 public str pp(elseIf(Expr cond, list[Stmt] body)) =
 	"elseif (<pp(cond)>) {
-	'  <for (b <- body) {><pp(b)><}>"
+	'  <for (b <- body) {><pp(b)><}>
+	'}"
 	;
 	
 //public data Else = \else(list[Stmt] body);
