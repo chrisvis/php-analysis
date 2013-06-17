@@ -1,6 +1,5 @@
 @license{
-
-  Copyright (c) 2009-2011 CWI
+  Copyright (c) 2009-2013 CWI
   All rights reserved. This program and the accompanying materials
   are made available under the terms of the Eclipse Public License v1.0
   which accompanies this distribution, and is available at
@@ -135,6 +134,9 @@ public tuple[CFG scriptCFG, LabelState lstate] createScriptCFG(Script scr, Label
 	cfgExitNode = scriptExit()[@lab=incLabel()];
 	lstate = addEntryAndExit(lstate, cfgEntryNode, cfgExitNode);
 
+	if (script(list[Stmt] b) !:= scr)
+		return < cfg([global()], lstate.nodes, { }, cfgEntryNode, cfgExitNode), lstate >;
+	
 	scriptBody = scr.body;
 	
 	// Add all the statements and expressions as CFG nodes
@@ -180,20 +182,40 @@ public tuple[CFG methodCFG, LabelState lstate] createMethodCFG(NamePath np, Clas
 	lstate.nodes += { stmtNode(s, s@lab)[@lab=s@lab] | /Stmt s := methodBody };
 	lstate.nodes += { exprNode(e, e@lab)[@lab=e@lab] | /Expr e := methodBody };
 	
+	// Add any initializer expressions from the parameters as CFG nodes
+	lstate.nodes += { exprNode(e, e@lab)[@lab=e@lab] | /Expr e := m.params };
+	
+	// Add initial nodes to represent initializing parameters with default values,
+	// plus add flow edges between these default initializers
+	notProvided = [ actualNotProvided(pn, e, br)[@lab=incLabel()] | param(pn,someExpr(e),_,br) <- m.params ];
+	lstate.nodes += toSet(notProvided);
+
 	set[FlowEdge] edges = { };
 	for (b <- methodBody) < edges, lstate > = addStmtEdges(edges, lstate, b);
 	< edges, lstate > = addBodyEdges(edges, lstate, methodBody);
-	if (size(methodBody) > 0) {
+
+	for (npi <- notProvided) edges += flowEdge(npi@lab, init(npi.expr));
+	for ([_*,np1,np2,_*] := notProvided) edges += flowEdge(final(np1.expr), np2@lab);
+
+	// Wire up the entry, exit, default init, and body nodes.
+	if (size(notProvided) > 0) {
+		edges += flowEdge(cfgEntryNode@lab, head(notProvided)@lab);
+		if (size(methodBody) > 0) {
+			edges += flowEdge(final(last(notProvided).expr), init(head(methodBody)));
+			edges += flowEdge(final(last(methodBody)), cfgExitNode@lab);
+		} else {
+			edges += flowEdge(final(last(notProvided).expr), cfgExitNode@lab);
+		}
+	} else if (size(methodBody) > 0) {
 		edges += flowEdge(cfgEntryNode@lab, init(head(methodBody)));
 		edges += flowEdge(final(last(methodBody)), cfgExitNode@lab);
 	} else {
 		edges += flowEdge(cfgEntryNode@lab, cfgExitNode@lab);
 	}
+
 	nodes = lstate.nodes;
 	lstate = shrink(lstate);
 
-	//< nodes, edges, lstate > = addJoinNodes(nodes, edges, lstate);
-	
  	return < cfg(np, nodes, edges, cfgEntryNode, cfgExitNode), lstate >;   
 }
 
@@ -213,20 +235,40 @@ public tuple[CFG functionCFG, LabelState lstate] createFunctionCFG(NamePath np, 
 	lstate.nodes += { stmtNode(s, s@lab)[@lab=s@lab] | /Stmt s := functionBody };
 	lstate.nodes += { exprNode(e, e@lab)[@lab=e@lab] | /Expr e := functionBody };
 	
+	// Add any initializer expressions from the parameters as CFG nodes
+	lstate.nodes += { exprNode(e, e@lab)[@lab=e@lab] | /Expr e := f.params };
+	
+	// Add initial nodes to represent initializing parameters with default values,
+	// plus add flow edges between these default initializers
+	notProvided = [ actualNotProvided(pn, e, br)[@lab=incLabel()] | param(pn,someExpr(e),_,br) <- f.params ];
+	lstate.nodes += toSet(notProvided);
+
 	set[FlowEdge] edges = { };
 	for (b <- functionBody) < edges, lstate > = addStmtEdges(edges, lstate, b);
 	< edges, lstate > = addBodyEdges(edges, lstate, functionBody);
-	if (size(functionBody) > 0) {
+
+	for (npi <- notProvided) edges += flowEdge(npi@lab, init(npi.expr));
+	for ([_*,np1,np2,_*] := notProvided) edges += flowEdge(final(np1.expr), np2@lab);
+	
+	// Wire up the entry, exit, default init, and body nodes.
+	if (size(notProvided) > 0) {
+		edges += flowEdge(cfgEntryNode@lab, head(notProvided)@lab);
+		if (size(functionBody) > 0) {
+			edges += flowEdge(final(last(notProvided).expr), init(head(functionBody)));
+			edges += flowEdge(final(last(functionBody)), cfgExitNode@lab);
+		} else {
+			edges += flowEdge(final(last(notProvided).expr), cfgExitNode@lab);
+		}
+	} else if (size(functionBody) > 0) {
 		edges += flowEdge(cfgEntryNode@lab, init(head(functionBody)));
 		edges += flowEdge(final(last(functionBody)), cfgExitNode@lab);
 	} else {
 		edges += flowEdge(cfgEntryNode@lab, cfgExitNode@lab);
 	}
+
 	nodes = lstate.nodes;
 	lstate = shrink(lstate);
 
-	//< nodes, edges, lstate > = addJoinNodes(nodes, edges, lstate);
-	
  	return < cfg(np, nodes, edges, cfgEntryNode, cfgExitNode), lstate >;   
 }
 
@@ -367,6 +409,13 @@ public Lab init(Stmt s) {
 
 		// In a while loop, the while condition is executed first and thus provides the first label.
 		case \while(Expr cond, _) : return init(cond);	
+		
+		// An empty statement is atomic
+		case emptyStmt() : return s@lab;
+		
+		// In a block, the first statement provides the first label. If there is no body,
+		// the statement itself provides the label.
+		case block(list[Stmt] body) : return isEmpty(body) ? s@alb : init(head(body));
 	}
 }
 
@@ -404,10 +453,10 @@ public Lab init(Expr e) {
 		case unaryOperation(Expr operand, Op operation) : return init(operand);
 		
 		case new(NameOrExpr className, list[ActualParameter] parameters) : {
-			if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
-				return init(expr);
-			else if (expr(Expr cname) := className)
+			if (expr(Expr cname) := className)
 				return init(cname);
+			else if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
+				return init(expr);
 			return e@lab;
 		}
 		
@@ -429,27 +478,24 @@ public Lab init(Expr e) {
 		case exit(noExpr()) : return e@lab;
 		
 		case call(NameOrExpr funName, list[ActualParameter] parameters) : {
-			if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
-				return init(expr);
-			else if (expr(Expr fname) := funName)
+			if (expr(Expr fname) := funName)
 				return init(fname);
+			else if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
+				return init(expr);
 			return e@lab;
 		}
 		
 		case methodCall(Expr target, NameOrExpr methodName, list[ActualParameter] parameters) : {
-			if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
-				return init(expr);
-			else 
-				return init(target);
+			return init(target);
 		}
 		
 		case staticCall(NameOrExpr staticTarget, NameOrExpr methodName, list[ActualParameter] parameters) : {
-			if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
-				return init(expr);
-			else if (expr(Expr sname) := staticTarget)
+			if (expr(Expr sname) := staticTarget)
 				return init(sname);
 			else if (expr(Expr mname) := methodName)
 				return init(mname);
+			else if (size(parameters) > 0 && actualParameter(Expr expr, bool byRef) := head(parameters))
+				return init(expr);
 			return e@lab;
 		}
 		
@@ -489,7 +535,14 @@ public Lab init(Expr e) {
 		case var(expr(Expr varName)) : return init(varName);
 		case var(name(Name varName)) : return e@lab;
 		
-		//case scriptFragment(list[Stmt] body) : return (size(body) == 0) ? e@lab : init(head(body));
+		case yield(someExpr(key), _) : return init(key);
+		case yield(noExpr(), someExpr(val)) : return init(val);
+		case yield(noExpr(), noExpr()) : return e@lab;
+		
+		case listExpr(exprs) : {
+			actualExprs = [ ei | someExpr(ei) <- exprs ];
+			return isEmpty(actualExprs) ? e@lab : init(head(actualExprs));
+		}
 	}
 }
 
@@ -1072,6 +1125,14 @@ public tuple[FlowEdges,LabelState] internalFlow(Stmt s, LabelState lstate) {
 			
 			lstate = popContinueLabel(popBreakLabel(lstate));
 		}
+		
+		case block(list[Stmt] body) : {
+			for (b <- body) < edges, lstate > = addStmtEdges(edges, lstate, b);
+			< edges, lstate > = addBodyEdges(edges, lstate, body);
+			if (size(body) > 0) {
+				edges += flowEdge(final(last(body)), finalLabel);
+			}		
+		}
 	}
 	
 	return < edges, lstate >;
@@ -1170,12 +1231,14 @@ public tuple[FlowEdges,LabelState] internalFlow(Expr e, LabelState lstate) {
 
 			if (expr(Expr cn) := className) {
 				< edges, lstate > = addExpEdges(edges, lstate, cn);
-				edges += flowEdge(final(cn),finalLabel);
-				if (size(parameters) > 0)
-					edges += flowEdge(final(last(parameters).expr), init(cn));
-			} else {
-				if (size(parameters) > 0)
+				if (size(parameters) > 0) {
+					edges += flowEdge(final(cn), init(head(parameters).expr));
 					edges += flowEdge(final(last(parameters).expr), finalLabel);
+				} else {
+					edges += flowEdge(final(cn), finalLabel);
+				}
+			} else if (size(parameters) > 0) {
+				edges += flowEdge(final(last(parameters).expr), finalLabel);
 			}
 		}
 		
@@ -1215,9 +1278,12 @@ public tuple[FlowEdges,LabelState] internalFlow(Expr e, LabelState lstate) {
 		
 			if (expr(Expr fn) := funName) {
 				< edges, lstate > = addExpEdges(edges, lstate, fn);
-				edges += flowEdge(final(fn),finalLabel);
-				if (size(parameters) > 0)
-					edges += flowEdge(final(last(parameters).expr), init(fn));
+				if (size(parameters) > 0) {
+					edges += flowEdge(final(fn), init(head(parameters).expr));
+					edges += flowEdge(final(last(parameters).expr),finalLabel);
+				} else {
+					edges += flowEdge(final(fn),finalLabel);
+				}
 			} else {
 				if (size(parameters) > 0)
 					edges += flowEdge(final(last(parameters).expr), finalLabel);
@@ -1225,20 +1291,25 @@ public tuple[FlowEdges,LabelState] internalFlow(Expr e, LabelState lstate) {
 		}
 		
 		case methodCall(Expr target, NameOrExpr methodName, list[ActualParameter] parameters) : {
+			< edges, lstate > = addExpEdges(edges, lstate, target);
+
 			for (actualParameter(aexp,_) <- parameters) < edges, lstate > = addExpEdges(edges, lstate, aexp);
 			< edges, lstate > = addExpSeqEdges(edges, lstate, [ae|actualParameter(ae,_) <- parameters]);
 			
-			< edges, lstate > = addExpEdges(edges, lstate, target);
-
-			if (size(parameters) > 0) {
-				edges += flowEdge(final(last(parameters).expr), init(target));
-			}
-
 			if (expr(Expr mn) := methodName) {
 				< edges, lstate > = addExpEdges(edges, lstate, mn);
-				edges = edges + flowEdge(final(target),init(mn)) + flowEdge(final(mn),finalLabel);
+				edges += flowEdge(final(target),init(mn));
+				if (size(parameters) > 0) {
+					edges += flowEdge(final(mn),init(head(parameters).expr));
+				} else {
+					edges += flowEdge(final(mn), finalLabel);
+				}
 			} else {
-				edges += flowEdge(final(target), finalLabel);
+				if (size(parameters) > 0) {
+					edges += flowEdge(final(target), init(head(parameters).expr));
+				} else {
+					edges += flowEdge(final(target), finalLabel);
+				}
 			}
 		}
 
@@ -1247,26 +1318,28 @@ public tuple[FlowEdges,LabelState] internalFlow(Expr e, LabelState lstate) {
 			for (actualParameter(aexp,_) <- parameters) < edges, lstate > = addExpEdges(edges, lstate, aexp);
 			< edges, lstate > = addExpSeqEdges(edges, lstate, [ae|actualParameter(ae,_) <- parameters]);
 
-			if (size(parameters) > 0 && expr(Expr tn) := staticTarget) {
-				edges += flowEdge(final(last(parameters).expr), init(tn));
-			} else if (size(parameters) > 0 && expr(Expr mn) := methodName) {
-				edges += flowEdge(final(last(parameters).expr), init(mn));
-			} else if (size(parameters) > 0) {
-				edges += flowEdge(final(last(parameters).expr), finalLabel);
-			}
-
 			if (expr(Expr tn) := staticTarget) {
 				< edges, lstate > = addExpEdges(edges, lstate, tn);
 				if (expr(Expr mn) := methodName)
 					edges += flowEdge(final(tn),init(mn));
+				else if (size(parameters) > 0)
+					edges += flowEdge(final(tn),init(head(parameters).expr));
 				else
 					edges += flowEdge(final(tn),finalLabel);
 			}
 
 			if (expr(Expr mn) := methodName) {
 				< edges, lstate > = addExpEdges(edges, lstate, mn);
-				edges = edges + flowEdge(final(mn),finalLabel);
+				if (size(parameters) > 0)
+					edges += flowEdge(final(mn),init(head(parameters).expr));
+				else
+					edges += flowEdge(final(mn),finalLabel);
 			}
+
+			if (size(parameters) > 0) {
+				edges += flowEdge(final(last(parameters).expr), finalLabel);
+			}
+
 		}
 
 		
@@ -1363,12 +1436,31 @@ public tuple[FlowEdges,LabelState] internalFlow(Expr e, LabelState lstate) {
 			edges += flowEdge(final(varName), finalLabel);
 		}
 		
-		//case scriptFragment(list[Stmt] body) : {
-		//	for (b <- body) < edges, lstate > = addStmtEdges(edges, lstate, b);
-		//	< edges, lstate > = addBodyEdges(edges, lstate, body);
-		//	if (size(body) > 0)
-		//		edges += flowEdge(final(last(body)), finalLabel);
-		//}
+		case yield(someExpr(k), noExpr()) : {
+			< edges, lstate > = addExpEdges(edges, lstate, k);
+			edges += flowEdge(final(k), finalLabel);
+		}
+
+		case yield(noExpr(), someExpr(v)) : {
+			< edges, lstate > = addExpEdges(edges, lstate, v);
+			edges += flowEdge(final(v), finalLabel);
+		}
+
+		case yield(someExpr(k), someExpr(v)) : {
+			< edges, lstate > = addExpEdges(edges, lstate, k);
+			< edges, lstate > = addExpEdges(edges, lstate, v);
+			edges += flowEdge(final(k), init(v));
+			edges += flowEdge(final(v), finalLabel);
+		}
+		
+		case listExpr(exprs) : {
+			actualExprs = [ ei | someExpr(ei) <- exprs ];
+			if (size(actualExprs) > 0) {
+				< edges, lstate > = addExpSeqEdges(edges, lstate, actualExprs);
+				edges += flowEdge(final(last(actualExprs)), finalLabel);
+			}
+		}
+		
 	}
 
 	return < edges, lstate >;			
