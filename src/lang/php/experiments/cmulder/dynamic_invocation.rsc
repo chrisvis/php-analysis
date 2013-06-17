@@ -16,6 +16,7 @@ import Type;
 import Set;
 import String;
 import List;
+import Relation;
 
 data callable =  callableOther()
 	| callableStr(str id)
@@ -24,7 +25,9 @@ data callable =  callableOther()
 	| callableArray( callable class,	callable method);
 
 alias possibilityList = list[tuple[Expr cond, list[Stmt] body]];
-alias traceList = rel[str function,loc location,callable argument];
+alias traceRel = rel[str function,loc location,callable argument];
+
+set[str] changedFiles = {};
 
 private callable parseCallable(str arg) {
 	switch(arg){
@@ -55,15 +58,27 @@ private void generateTestOuput(System sys, loc outputFile) {
 	writeFile(outputFile, output);
 }
 
+private void generateOutput(System sys, loc outputPath, loc systemPath) {
+	for(changedFile <- changedFiles) {
+		//
+		loc inputFile = |file:///| + changedFile;
+		loc outputFile = |file:///| + replaceFirst(changedFile, systemPath.path, outputPath.path);
+		
+		println(inputFile);
+		println(outputFile);
+
+		writeFile(outputFile, "\<?php\n<pp(flattenBlocks(sys[inputFile]))>");
+	}	
+}
+
 private Script parsePHPString(str code) {
 	loc tmpFile = |file:///tmp/phpString.php|;
 	writeFile(tmpFile, "\<?php\n<code>");
 	return loadPHPFile(tmpFile);
 }
 
-private rel[str function,loc location,callable argument] importTraces() {
-	loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
-	return { <a, readTextValueString(#loc,b), parseCallable(c) > | <a,b,c> <- readCSV(#rel[str function,str location,str argument], tracesCsv) };
+private rel[str function,loc location,callable argument] importTraces(loc l) {
+	return { <a, readTextValueString(#loc,b), parseCallable(c) > | <a,b,c> <- readCSV(#rel[str function,str location,str argument], l) };
 }
 
 private tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineArray(Expr callableArgument) {
@@ -104,18 +119,20 @@ private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occur
  		elseStatements = [];
  	}
 
-	return \if(
-				top(possibilities).cond,
-				top(possibilities).body,
-			    elseStatements,
-			  	someElse(\else([occurrence]))
-			);
+	return 
+		\if(
+			top(possibilities).cond,
+			top(possibilities).body,
+		    elseStatements,
+		  	someElse(\else([occurrence]))
+		);
 }
 
 public System replaceStaticEvalUsage(System sys) {
 	sys = replaceVisit:visit (sys) {
 		case occurrence:exprstmt(/eval(scalar(string(code)))): {
 			if (script(stmts) := parsePHPString(code)) {
+				changedFiles += occurrence@at.path;
 				insert block(stmts);
 			}
 		}
@@ -133,6 +150,7 @@ public System replaceStaticCallUserFuncUsage(System sys) {
 					insert call(name(name(functionName)), tail(args));
 				}
 			}
+			changedFiles += match@at.path;
 			insert replacement;
 		}
 		case match:exprstmt(/call(name(name("call_user_func")), [actualParameter(array([arrayElement(_, scalar(string(className)),_),arrayElement(_, scalar(string(methodName)),_),xs*]),_), ys*])): {
@@ -147,6 +165,7 @@ public System replaceStaticCallUserFuncUsage(System sys) {
 					insert staticCall(name(name(className)), name(name(methodName)), tail(args));
 				}
 			}
+			changedFiles += match@at.path;
 			insert replacement;
 		}
 			
@@ -155,7 +174,7 @@ public System replaceStaticCallUserFuncUsage(System sys) {
 	return sys;
 }
 
-private System replaceEvalsByTraces(System sys, traceList allTraces) {
+private System replaceEvalsByTraces(System sys, traceRel allTraces) {
 	sys = replaceVisit:visit (sys) {
 		case occurrence:exprstmt(/eval(callableArgument)): {
 			tracesForOccurrence = allTraces["eval"][occurrence@at];
@@ -181,7 +200,7 @@ private System replaceEvalsByTraces(System sys, traceList allTraces) {
 			if (isEmpty(possibilities)) {
 				fail replaceVisit;
 			}
-			
+			changedFiles += occurrence@at.path;
 		 	insert createIfFromPossibilities(possibilities, occurrence);
 		}
 	}
@@ -202,7 +221,7 @@ public Expr combineBoolExprs(list[Expr] exprs) {
 		);
 }
 
-private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
+private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 	sys = visit (sys) {
 		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
 			
@@ -232,7 +251,7 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 						
 						possibilities = possibilities + <condition, [body]>;
 				 	}
-				 	
+				 	changedFiles += occurrence@at.path;
 				 	insert createIfFromPossibilities(possibilities, occurrence);
 				}
 			// if all traces are array(object, methodString) / $object->methodString()				
@@ -293,7 +312,7 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 						
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
-
+					changedFiles += occurrence@at.path;
 				 	insert createIfFromPossibilities(possibilities, occurrence);
 				}
 			// if all traces are array(classString, methodString) / classString::methodString()
@@ -353,7 +372,7 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 						
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
-
+					changedFiles += occurrence@at.path;
 				 	insert createIfFromPossibilities(possibilities, occurrence);	
 			 	}			
 			}
@@ -364,19 +383,33 @@ private System replaceCallUserFunByTraces(System sys, traceList allTraces) {
 }
 
 public void main() {
-	loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem|;
+	//loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem|;
+	//loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
+	loc systemPath = |file:///export/scratch1/chrism/systems/wordpress-tests/|;
+	loc tracesCsv = |file:///export/scratch1/chrism/systems/wordpress-tests.csv|;
+	loc build = |file:///export/scratch1/chrism/systems/wordpress-tests.pt|;
+	loc buildAltered = |file:///export/scratch1/chrism/systems/wordpress-tests.pt.altered|;
 
-	sys = loadPHPFiles(systemPath);
-
+	//sys = loadPHPFiles(systemPath);
+	//writeBinaryValueFile(build, sys);
+	sys = readBinaryValueFile(#System, build);
+	////
+	//////sys = resolveIncludesWithVars(sys, systemPath);
 	sys = replaceStaticEvalUsage(sys);
-	sys = resolveIncludesWithVars(sys, systemPath);
 	sys = replaceStaticCallUserFuncUsage(sys);
-	
-	traceList allTraces = importTraces();
+	//
+	traceRel allTraces = importTraces(tracesCsv);
+	iprintln(domain(allTraces["call_user_func"]));
 	sys = replaceEvalsByTraces(sys, allTraces);
 	sys = replaceCallUserFunByTraces(sys, allTraces);
-		
-	generateTestOuput(sys, |file:///ufs/chrism/php/thesis/examples/testSystem.php|);
+	
+	print("changedFiles");
+	iprintln(changedFiles);
+	////	
+	//writeBinaryValueFile(buildAltered, sys);
+	//sys = readBinaryValueFile(#System, buildAltered);
+	//generateTestOuput(sys, |file:///ufs/chrism/php/thesis/examples/testSystem.php|);
+	generateOutput(sys, |file:///tmp/output/|, systemPath);
 
 	return;
 }
