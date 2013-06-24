@@ -35,12 +35,13 @@ private callable parseCallable(str arg) {
 			return callableStr(id);
 		case /^'<expr:.*>'$/ : 
 			return callableExprStr(expr);
-		case /^array \(0 =\> '<class:\w+>', 1 =\> '<method:\w+>'\)$/: 
+		case /^array \(0 =\> '<class:\w+>', 1 =\> '<method:.+>'\)$/: 
 			return callableArray( callableStr(class),	callableStr(method));
-		case /^array \(0 =\> class <class:\w+> \{\s*\}, 1 =\> '<method:\w+>'\)$/:
+		case /^array \(0 =\> class <class:\w+> \{.*\}, 1 =\> '<method:.+>'\)$/:
 			return callableArray( callableClass(class),	callableStr(method));
 		
 	}
+	println("Unparsable trace: <arg>");
 	return callableOther();
 }
 
@@ -60,12 +61,10 @@ private void generateTestOuput(System sys, loc outputFile) {
 
 private void generateOutput(System sys, loc outputPath, loc systemPath) {
 	for(changedFile <- changedFiles) {
-		//
 		loc inputFile = |file:///| + changedFile;
 		loc outputFile = |file:///| + replaceFirst(changedFile, systemPath.path, outputPath.path);
 		
-		println(inputFile);
-		println(outputFile);
+		println("Changed file: <outputFile>");
 
 		writeFile(outputFile, "\<?php\n<pp(flattenBlocks(sys[inputFile]))>");
 	}	
@@ -208,35 +207,35 @@ private System replaceEvalsByTraces(System sys, traceRel allTraces) {
 	return sys;
 }
 
-public Expr combineBoolExprs([Expr singleExpr]) {
-	return singleExpr;
-}
+public Expr combineBoolExprs([Expr singleExpr]) = singleExpr;
+public Expr combineBoolExprs(list[Expr] exprs) =
+	binaryOperation(
+		top(exprs),
+		combineBoolExprs(tail(exprs)),
+		booleanAnd()
+	);
 
-public Expr combineBoolExprs(list[Expr] exprs) {
-	return 
-		binaryOperation(
-			top(exprs),
-			combineBoolExprs(tail(exprs)),
-			booleanAnd()
-		);
-}
 
 private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
-	sys = visit (sys) {
+	notFound = domain(allTraces["call_user_func"]);
+			
+	sys = replaceVisit:visit (sys) {
 		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
 			
 			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
+			println(occurrence@at);
+			
+			notFound -= occurrence@at;
+			// No traces for this occurrence, fail visit
+			if (isEmpty(tracesForOccurrence)) {
+				fail replaceVisit;
+			}
+			
+			possibilityList possibilities = [];
 
-			// if all traces are plain strings
-			if (all(callable c <- tracesForOccurrence, callableStr(_) := c)) {
-			 	println("All callableStr");
-			 	iprintln(tracesForOccurrence);
-
-				if (actualParameter(callableArgument,_) := top(args)) {
-					
-					possibilityList possibilities = [];
-					for (callableStr(traceValue) <- tracesForOccurrence) {
-					
+			for (trace <- tracesForOccurrence) {
+				if (callableStr(traceValue) := trace) {
+					if (actualParameter(callableArgument,_) := top(args)) {
 						Expr condition = binaryOperation(
 				    		callableArgument,
 					    	scalar(string(traceValue)),
@@ -248,24 +247,14 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 								insert call(name(name(traceValue)), tail(args));
 							}
 						};
-						
+							
 						possibilities = possibilities + <condition, [body]>;
 				 	}
-				 	changedFiles += occurrence@at.path;
-				 	insert createIfFromPossibilities(possibilities, occurrence);
-				}
-			// if all traces are array(object, methodString) / $object->methodString()				
-			} else if (all(callable c <- tracesForOccurrence, callableArray(callableClass(_), callableStr(_)) := c)) {
-				println("All callableClass-\>callableStr");
-				iprintln(tracesForOccurrence);
+				} else if (callableArray(callableClass(_), callableStr(traceValue)) := trace) {
 				
-				if (actualParameter(callableArgument,_) := top(args)) {
+					if (actualParameter(callableArgument,_) := top(args)) {
 					
-					callableArgumentProps = checkForInlineArray(callableArgument);
-					possibilityList possibilities = [];
-					
-					for (callableArray(callableClass(_), callableStr(traceValue)) <- tracesForOccurrence) {
-						
+						callableArgumentProps = checkForInlineArray(callableArgument);
 						list[Expr] conds = [];
 
 				        if (!callableArgumentProps.inlineArray) {
@@ -312,21 +301,12 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 						
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
-					changedFiles += occurrence@at.path;
-				 	insert createIfFromPossibilities(possibilities, occurrence);
-				}
-			// if all traces are array(classString, methodString) / classString::methodString()
-			} else if (all(callable c <- tracesForOccurrence, callableArray(callableStr(_), callableStr(_)) := c)) {
-				println("All callableStr::callableStr");
-				iprintln(tracesForOccurrence);
+				}  else if (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) := trace) {
 				
-				if (actualParameter(callableArgument,_) := top(args)) {
+					if (actualParameter(callableArgument,_) := top(args)) {
 					
-					callableArgumentProps = checkForInlineArray(callableArgument);
-					possibilityList possibilities = [];
-					
-					for (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) <- tracesForOccurrence) {
-						
+						callableArgumentProps = checkForInlineArray(callableArgument);
+
 						list[Expr] conds = [];
 				        
 				        if (!callableArgumentProps.inlineArray){
@@ -372,13 +352,26 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 						
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
-					changedFiles += occurrence@at.path;
-				 	insert createIfFromPossibilities(possibilities, occurrence);	
-			 	}			
+			 	} else {
+			 		println("Unknown trace");
+		 			iprintln(trace);
+			 	}
 			}
-			
+			//if (possibilities == []) {
+			//	println("No possibilities for occurence, should not happen.");
+			//	iprintln(occurrence);
+			//} else {
+			//	changedFiles += occurrence@at.path;
+			//	println("Changed.");
+			//	iprintln(occurrence);
+			//	iprintln(tracesForOccurrence);
+			//	insert createIfFromPossibilities(possibilities, occurrence);
+			//}		
 		}
 	}
+	
+	println("Not found:");
+	iprintln(notFound);
 	return sys;
 }
 
@@ -394,12 +387,13 @@ public void main() {
 	//writeBinaryValueFile(build, sys);
 	sys = readBinaryValueFile(#System, build);
 	////
-	//////sys = resolveIncludesWithVars(sys, systemPath);
+	//sys = resolveIncludesWithVars(sys, systemPath);
 	sys = replaceStaticEvalUsage(sys);
 	sys = replaceStaticCallUserFuncUsage(sys);
 	//
 	traceRel allTraces = importTraces(tracesCsv);
 	iprintln(domain(allTraces["call_user_func"]));
+	//iprintln({ s.path | s <- domain(allTraces["call_user_func"])});
 	sys = replaceEvalsByTraces(sys, allTraces);
 	sys = replaceCallUserFunByTraces(sys, allTraces);
 	

@@ -12,6 +12,18 @@ import lang::php::ast::AbstractSyntax;
 import List;
 import String;
 import Set;
+import IO;
+
+
+public str pp(staticVar(varName, expr)) = "static $<varName>" when expr == noExpr();
+public str pp(staticVar(varName, expr)) = "static $<varName> = <pp(expr)>" when expr != noExpr();
+
+public str pp(errscript(errStr)) {
+	println("Trying to PrettyPrint errscript(\"<errStr>\")");
+	return "\n//<errStr>\n";
+}
+
+public str pp(listExpr(list[OptionExpr] optionExprs)) = "list(<intercalate(",",[pp(p)|p<-optionExprs])>)";
 
 //public data OptionExpr = someExpr(Expr expr) | noExpr();
 public str pp(someExpr(Expr expr)) = pp(expr);
@@ -299,8 +311,9 @@ public str pp(encapsed(list[Expr] parts)) = intercalate(".",[pp(p) | p <- parts]
 
 //public data Stmt 
 //	= \break(OptionExpr breakExpr)
-public str pp(\break(SomeExpr(Expr breakExpr))) = "break <pp(breakExpr)>;";
-public str pp(\break(NoExpr())) = "break;";
+ //break(someExpr(scalar(integer(2))
+public str pp(\break(someExpr(Expr breakExpr))) = "break <pp(breakExpr)>;";
+public str pp(\break(noExpr())) = "break;";
 
 //	| classDef(ClassDef classDef)
 public str pp(classDef(ClassDef classDef)) = pp(classDef);
