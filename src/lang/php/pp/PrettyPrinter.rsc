@@ -23,8 +23,6 @@ public str pp(errscript(errStr)) {
 	return "\n//<errStr>\n";
 }
 
-public str pp(listExpr(list[OptionExpr] optionExprs)) = "list(<intercalate(",",[pp(p)|p<-optionExprs])>)";
-
 //public data OptionExpr = someExpr(Expr expr) | noExpr();
 public str pp(someExpr(Expr expr)) = pp(expr);
 public str pp(noExpr()) = "";
@@ -101,7 +99,7 @@ public str pp(listAssign(list[OptionExpr] assignsTo, Expr assignExpr)) = "list(<
 public str pp(refAssign(Expr assignTo, Expr assignExpr)) = "<pp(assignTo)> =& <pp(assignExpr)>";
 
 //	| binaryOperation(Expr left, Expr right, Op operation)
-public str pp(binaryOperation(Expr left, Expr right, Op operation)) = "<pp(left)> <pp(operation)> <pp(right)>";
+public str pp(binaryOperation(Expr left, Expr right, Op operation)) = "(<pp(left)> <pp(operation)> <pp(right)>)";
 
 //	| unaryOperation(Expr operand, Op operation)
 public str pp(unaryOperation(Expr operand, Op operation)) = "<pp(operation)><pp(operand)>" when ppOnLeft(operation);
@@ -111,7 +109,8 @@ public str pp(unaryOperation(Expr operand, Op operation)) = "<pp(operand)><pp(op
 public str pp(new(name(Name className), list[ActualParameter] parameters)) = 
 	"new <pp(className)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 public str pp(new(expr(Expr className), list[ActualParameter] parameters)) = 
-	"new $<pp(className)>(<intercalate(",",[pp(p)|p<-parameters])>)";
+	"new <pp(className)>(<intercalate(",",[pp(p)|p<-parameters])>)";
+	//when;
 
 //	| cast(CastType castType, Expr expr)
 public str pp(cast(CastType castType, Expr expr)) = "(<pp(castType)>) <pp(expr)>";
@@ -160,17 +159,17 @@ public str pp(call(expr(Expr funName), list[ActualParameter] parameters)) =
 public str pp(methodCall(Expr target, name(Name methodName), list[ActualParameter] parameters)) =
 	"<pp(target)>-\><pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 public str pp(methodCall(Expr target, expr(Expr methodName), list[ActualParameter] parameters)) =
-	"<pp(target)>-\>$<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
+	"<pp(target)>-\><pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 
 //	| staticCall(NameOrExpr staticTarget, NameOrExpr methodName, list[ActualParameter] parameters)
 public str pp(staticCall(name(Name staticTarget), name(Name methodName), list[ActualParameter] parameters)) =
 	"<pp(staticTarget)>::<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 public str pp(staticCall(name(Name staticTarget), expr(Expr methodName), list[ActualParameter] parameters)) =
-	"<pp(staticTarget)>::$<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
+	"<pp(staticTarget)>::<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 public str pp(staticCall(expr(Expr staticTarget), name(Name methodName), list[ActualParameter] parameters)) =
 	"$<pp(staticTarget)>::<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 public str pp(staticCall(expr(Expr staticTarget), expr(Expr methodName), list[ActualParameter] parameters)) =
-	"$<pp(staticTarget)>::$<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
+	"$<pp(staticTarget)>::<pp(methodName)>(<intercalate(",",[pp(p)|p<-parameters])>)";
 
 //	| include(Expr expr, IncludeType includeType)
 public str pp(Expr::include(Expr expr, IncludeType includeType)) = "<pp(includeType)> <pp(expr)>";
@@ -187,7 +186,7 @@ public str pp(print(Expr expr)) = "print(<pp(expr)>)";
 
 //	| propertyFetch(Expr target, NameOrExpr propertyName)
 public str pp(propertyFetch(Expr target, name(Name propertyName))) = "<pp(target)>-\><pp(propertyName)>";
-public str pp(propertyFetch(Expr target, expr(Expr propertyName))) = "<pp(target)>-\>$<pp(propertyName)>";
+public str pp(propertyFetch(Expr target, expr(Expr propertyName))) = "<pp(target)>-\><pp(propertyName)>";
 
 //	| shellExec(list[Expr] parts)
 public str pp(shellExec(list[Expr] parts)) = "`<intercalate(" ",[pp(p)|p<-parts])>`";
@@ -196,7 +195,7 @@ public str pp(shellExec(list[Expr] parts)) = "`<intercalate(" ",[pp(p)|p<-parts]
 public str pp(ternary(Expr c, OptionExpr ib, Expr eb)) = "<pp(c)>?<pp(ib)>:<pp(eb)>";
 
 //	| staticPropertyFetch(NameOrExpr className, NameOrExpr propertyName)
-public str pp(staticPropertyFetch(name(Name cn),name(Name pn))) = "<pp(cn)>::<pp(pn)>";
+public str pp(staticPropertyFetch(name(Name cn),name(Name pn))) = "<pp(cn)>::$<pp(pn)>";
 public str pp(staticPropertyFetch(name(Name cn),expr(Expr pn))) = "<pp(cn)>::$<pp(pn)>";
 public str pp(staticPropertyFetch(expr(Expr cn),name(Name pn))) = "$<pp(cn)>::<pp(pn)>";
 public str pp(staticPropertyFetch(expr(Expr cn),expr(Expr pn))) = "$<pp(cn)>::$<pp(pn)>";
@@ -249,8 +248,8 @@ public str pp(postDec()) = "--";
 public str pp(preDec()) = "--";
 public str pp(postInc()) = "++";
 public str pp(preInc()) = "++";
-public str pp(lt()) = "\<=";
-public str pp(leq()) = "\<";
+public str pp(lt()) = "\<";
+public str pp(leq()) = "\<=";
 public str pp(unaryPlus()) = "+";
 public str pp(unaryMinus()) = "-";
 public str pp(equal()) = "==";
@@ -315,7 +314,11 @@ public str pp(namespaceConstant()) = "__NAMESPACE__";
 public str pp(traitConstant()) = "__TRAIT__";
 public str pp(Scalar::float(real r)) = "<r>";
 public str pp(integer(int i)) = "<i>";
-public str pp(Scalar::string(str s)) = "\'<s>\'";
+public str pp(Scalar::string(str s)) {
+	s = replaceAll(s, "\\", "\\\\");
+	s = replaceAll(s, "\'", "\\\'");
+	return "\'<s>\'";
+}
 public str pp(encapsed(list[Expr] parts)) = intercalate(".",[pp(p) | p <- parts]);
 
 //public data Stmt 
@@ -344,9 +347,10 @@ public str pp(declare(list[Declaration] decls, list[Stmt] body)) =
 
 //	| do(Expr cond, list[Stmt] body)
 public str pp(do(Expr cond, list[Stmt] body)) = 
-	"do(<pp(cond)>) {
+	"do {
 	'	<for (b<-body) {><pp(b)><}>
-	'}";
+	'} while (<pp(cond)>)
+	';";
 
 //	| echo(list[Expr] exprs)
 public str pp(echo(list[Expr] exprs)) = "echo(<intercalate(".",[pp(e)|e<-exprs])>);";
@@ -356,7 +360,7 @@ public str pp(exprstmt(Expr expr)) = "<pp(expr)>;";
 
 //	| \for(list[Expr] inits, list[Expr] conds, list[Expr] exprs, list[Stmt] body)
 public str pp(\for(list[Expr] inits, list[Expr] conds, list[Expr] exprs, list[Stmt] body)) = 
-	"for(<intercalate(",",[pp(i)|i<-inits])> ; <intercalate(",",[pp(c)|c<-conds])> ; <intercalate(",",[pp(e)|e<-exprs])> {
+	"for(<intercalate(",",[pp(i)|i<-inits])> ; <intercalate(",",[pp(c)|c<-conds])> ; <intercalate(",",[pp(e)|e<-exprs])>) {
 	'	<for (b <- body) {><pp(b)><}>
 	'}";
 
@@ -389,7 +393,7 @@ public str pp(function(str name, false, list[Param] params, list[Stmt] body)) =
 	'}";
 
 //	| global(list[Expr] exprs)
-public str pp(global(list[Expr] exprs)) = "global <intercalate(",",[pp(e)|e<-exprs])>";
+public str pp(global(list[Expr] exprs)) = "global <intercalate(",",[pp(e)|e<-exprs])>;\n";
 
 //	| goto(str label)
 public str pp(goto(str label)) = "goto <label>;";
@@ -423,7 +427,7 @@ public str pp(\if(Expr cond, list[Stmt] body, list[ElseIf] elseIfs, someElse(Els
 	'" when !isEmpty(elseIfs);
 
 //	| inlineHTML(str htmlText)
-public str pp(inlineHTML(str htmlText)) = "HTMLHere";
+public str pp(inlineHTML(str htmlText)) = " ?\><htmlText>\<?php ";
 
 //	| interfaceDef(InterfaceDef interfaceDef)
 public str pp(interfaceDef(InterfaceDef interfaceDef)) = pp(interfaceDef);
@@ -449,7 +453,20 @@ public str pp(\return(someExpr(Expr returnExpr))) = "return <pp(returnExpr)>;";
 public str pp(\return(noExpr())) = "return;";
 
 //	| static(list[StaticVar] vars)
-public str pp(Stmt::static(list[StaticVar] vars)) = "static <intercalate(",",[pp(v)|v<-vars])>;";
+public str pp(Stmt::static(list[StaticVar] vars)) {
+	parsedVars = [];
+	iprintln(vars);
+	for(v<-vars) {
+		println("in loop");
+		iprintln(v);
+		switch(v) {
+			case staticVar(str name, someExpr(Expr defaultValue)):  parsedVars = parsedVars + ["$<name> = <pp(defaultValue)>"];
+			case staticVar(str name, noExpr()):  parsedVars = parsedVars + ["$<name>"];
+		}
+	}
+	iprintln(parsedVars);
+	return "static <intercalate(",",parsedVars)>;";
+}
 
 //	| \switch(Expr cond, list[Case] cases)
 public str pp(\switch(Expr cond, list[Case] cases)) = 
@@ -549,17 +566,17 @@ public str pp(method(str name, set[Modifier] modifiers, true, list[Param] params
 	"<intercalate(" ", [pp(m)|m<-modifiers])> function &<name>(<intercalate(",",[pp(p)|p<-params])>) {<for (b <- body) {>
 	'	<pp(b)><}>
 	'}"
-	when !isEmpty(body);
+	when !isEmpty(body) || !(\abstract() in modifiers);
 
 public str pp(method(str name, set[Modifier] modifiers, true, list[Param] params, list[Stmt] body)) =
 	"<intercalate(" ", [pp(m)|m<-modifiers])> function &<name>(<intercalate(",",[pp(p)|p<-params])>);"
-	when isEmpty(body);
+	when isEmpty(body);// || !(\abstract() in modifiers);
 
 public str pp(method(str name, set[Modifier] modifiers, false, list[Param] params, list[Stmt] body)) =
 	"<intercalate(" ", [pp(m)|m<-modifiers])> function <name>(<intercalate(",",[pp(p)|p<-params])>) {<for (b <- body) {>
 	'	<pp(b)><}>
 	'}"
-	when !isEmpty(body);
+	when !isEmpty(body) || !(\abstract() in modifiers);
 
 public str pp(method(str name, set[Modifier] modifiers, false, list[Param] params, list[Stmt] body)) =
 	"<intercalate(" ", [pp(m)|m<-modifiers])> function <name>(<intercalate(",",[pp(p)|p<-params])>);"
@@ -643,8 +660,8 @@ public str pp(interface(str interfaceName, list[Name] extends, list[ClassItem] m
 //public data TraitDef = trait(str traitName, list[ClassItem] members);
 
 //public data StaticVar = staticVar(str name, OptionExpr defaultValue);
-public str pp(staticVar(str name, SomeExpr(Expr defaultValue))) = "static $<name> = <pp(defaultValue)>";
-public str pp(staticVar(str name, NoExpr())) = "static $<name>";
+public str pp(staticVar(str name, someExpr(Expr defaultValue))) = "static $<name> = <pp(defaultValue)>";
+public str pp(staticVar(str name, noExpr())) = "static $<name>";
 
 //public data Script = script(list[Stmt] body) | errscript(str err);
 public str pp(script(list[Stmt] body)) = intercalate("\n",[pp(b) | b <- body]);

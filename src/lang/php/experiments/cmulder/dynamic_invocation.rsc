@@ -25,11 +25,11 @@ data callable =  callableOther()
 	| callableArray( callable class,	callable method);
 
 alias possibilityList = list[tuple[Expr cond, list[Stmt] body]];
-alias traceRel = rel[str function,loc location,callable argument];
+alias traceRel = rel[str function, loc location, tuple[callable argument, int arrElements] arguments];
 
 set[str] changedFiles = {};
 
-private callable parseCallable(str arg) {
+public callable parseCallable(str arg) {
 	switch(arg){
 		case /^'<id:\w+>'$/ : 
 			return callableStr(id);
@@ -45,12 +45,45 @@ private callable parseCallable(str arg) {
 	return callableOther();
 }
 
+public int countArrayElements(str string) {	
+	// remove new lines
+	string = replaceAll(string, "\n", "");
+	
+	// remove escaped '
+	string = replaceAll(string, "\\\'", "");
 
-private void generateTestOuput(Script scr, loc outputFile) {
+	// remove surrounding array
+	if (/^array \(<body:.*>\)$/ := string) {
+		string = body;
+	}
+	
+	// cleanup string (remove nested arrays/classes/strings)
+	// to eliminate false positives of array elements
+	solve(string) {
+		// remove strings
+		for (/<block:'[^']*\'>/ := string) {
+			string = replaceAll(string, block, "");
+		}
+
+		// remove () sets with content (nested arrays)
+		for (/<block:\([^\)]*\)>/ := string) {
+			string = replaceAll(string, block, "");
+		}
+		
+		// remove {} sets with content (objects)
+		for (/<block:\{[^\}]*\}>/ := string) {
+			string = replaceAll(string, block, "");
+		}
+	}
+	
+	return size(findAll(string, "=\>"));
+}
+
+public void generateTestOuput(Script scr, loc outputFile) {
 	writeFile(outputFile, "\<?php\n<pp(flattenBlocks(scr))>");
 }
 
-private void generateTestOuput(System sys, loc outputFile) {
+public void generateTestOuput(System sys, loc outputFile) {
 	str output = "\<?php\n";
 	for(file <- sys) {
 		output = output + "// <file>\n\n";
@@ -59,7 +92,7 @@ private void generateTestOuput(System sys, loc outputFile) {
 	writeFile(outputFile, output);
 }
 
-private void generateOutput(System sys, loc outputPath, loc systemPath) {
+public void generateOutput(System sys, loc outputPath, loc systemPath) {
 	for(changedFile <- changedFiles) {
 		loc inputFile = |file:///| + changedFile;
 		loc outputFile = |file:///| + replaceFirst(changedFile, systemPath.path, outputPath.path);
@@ -70,17 +103,17 @@ private void generateOutput(System sys, loc outputPath, loc systemPath) {
 	}	
 }
 
-private Script parsePHPString(str code) {
+public Script parsePHPString(str code) {
 	loc tmpFile = |file:///tmp/phpString.php|;
 	writeFile(tmpFile, "\<?php\n<code>");
 	return loadPHPFile(tmpFile);
 }
 
-private rel[str function,loc location,callable argument] importTraces(loc l) {
-	return { <a, readTextValueString(#loc,b), parseCallable(c) > | <a,b,c> <- readCSV(#rel[str function,str location,str argument], l) };
+public traceRel importTraces(loc l) {
+	return { <a, readTextValueString(#loc,b), <parseCallable(c), countArrayElements(d)> > | <a,b,c,d> <- readCSV(#rel[str function,str location,str argument, str argument2], l) };
 }
 
-private tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineArray(Expr callableArgument) {
+public tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineArray(Expr callableArgument) {
 	Expr objectVar;
 	Expr methodVar;
 	bool inlineArray;
@@ -107,7 +140,7 @@ private tuple[Expr objectVar, Expr methodVar, bool inlineArray] checkForInlineAr
 	return <objectVar, methodVar, inlineArray>;
 }
 
-private Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occurrence) {
+public Stmt createIfFromPossibilities(possibilityList possibilities, Stmt occurrence) {
  	list[ElseIf] elseStatements;
 
 	possibilities = dup(possibilities);
@@ -173,7 +206,7 @@ public System replaceStaticCallUserFuncUsage(System sys) {
 	return sys;
 }
 
-private System replaceEvalsByTraces(System sys, traceRel allTraces) {
+public System replaceEvalsByTraces(System sys, traceRel allTraces) {
 	sys = replaceVisit:visit (sys) {
 		case occurrence:exprstmt(/eval(callableArgument)): {
 			tracesForOccurrence = allTraces["eval"][occurrence@at];
@@ -216,7 +249,7 @@ public Expr combineBoolExprs(list[Expr] exprs) =
 	);
 
 
-private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
+public System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 	notFound = domain(allTraces["call_user_func"]);
 			
 	sys = replaceVisit:visit (sys) {
@@ -234,7 +267,7 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 			possibilityList possibilities = [];
 
 			for (trace <- tracesForOccurrence) {
-				if (callableStr(traceValue) := trace) {
+				if (callableStr(traceValue) := trace.argument) {
 					if (actualParameter(callableArgument,_) := top(args)) {
 						Expr condition = binaryOperation(
 				    		callableArgument,
@@ -250,7 +283,7 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 							
 						possibilities = possibilities + <condition, [body]>;
 				 	}
-				} else if (callableArray(callableClass(_), callableStr(traceValue)) := trace) {
+				} else if (callableArray(callableClass(_), callableStr(traceValue)) := trace.argument) {
 				
 					if (actualParameter(callableArgument,_) := top(args)) {
 					
@@ -301,7 +334,7 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 						
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
-				}  else if (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) := trace) {
+				}  else if (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) := trace.argument) {
 				
 					if (actualParameter(callableArgument,_) := top(args)) {
 					
@@ -357,16 +390,18 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 		 			iprintln(trace);
 			 	}
 			}
-			//if (possibilities == []) {
-			//	println("No possibilities for occurence, should not happen.");
-			//	iprintln(occurrence);
-			//} else {
-			//	changedFiles += occurrence@at.path;
-			//	println("Changed.");
-			//	iprintln(occurrence);
-			//	iprintln(tracesForOccurrence);
-			//	insert createIfFromPossibilities(possibilities, occurrence);
-			//}		
+			if (possibilities == []) {
+				println("No possibilities for occurence, should not happen.");
+				iprintln(occurrence);
+			} else {
+				changedFiles += occurrence@at.path;
+				println("Changed:");
+				println(pp(occurrence));
+				result = createIfFromPossibilities(possibilities, occurrence);
+				println("Into:");
+				println(pp(result));
+				insert result;
+			}		
 		}
 	}
 	
@@ -375,16 +410,239 @@ private System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 	return sys;
 }
 
-public void main() {
-	//loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem|;
-	//loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
-	loc systemPath = |file:///export/scratch1/chrism/systems/wordpress-tests/|;
-	loc tracesCsv = |file:///export/scratch1/chrism/systems/wordpress-tests.csv|;
-	loc build = |file:///export/scratch1/chrism/systems/wordpress-tests.pt|;
-	loc buildAltered = |file:///export/scratch1/chrism/systems/wordpress-tests.pt.altered|;
+public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments(actualParameter(arrArgument,_), int numElements) {
+	list [Expr] conds = [];
+	list[ActualParameter] params = [];
+	
+	if (array(arrElements) := arrArgument) {
+		println("array(arrElements) := arrArgument");
+		params = [actualParameter(n, false) | arrayElement(_,n,_) <- arrElements];
+	} else {
+	 	conds = conds + [
+	 		call(
+				name(name("is_array")),
+				[actualParameter(arrArgument, false)]
+			),
+			binaryOperation(
+            	call(
+					name(name("sizeof")),
+            		[actualParameter(arrArgument, false)]),
+            	scalar(integer(numElements)),
+            	equal()
+        	)
+	 	];
+	 	for(int n <- [0 .. numElements]) {
+	 		params = params + [
+	 			actualParameter(
+					fetchArrayDim(
+						arrArgument,
+						someExpr(scalar(integer(n)))
+					),
+					false
+				)
+			];
+	 	}
+ 	}
+ 	return <params, conds>;
+}
 
-	//sys = loadPHPFiles(systemPath);
+public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments(a) = <[],[]>;
+
+public System replaceCUFAByTraces(System sys, traceRel allTraces) {
+	notFound = domain(allTraces["call_user_func_array"]);
+
+	sys = replaceVisit:visit (sys) {
+		case occurrence:exprstmt(/call(name(name("call_user_func_array")), args)): {
+			tracesForOccurrence = allTraces["call_user_func_array"][occurrence@at];
+			println(occurrence@at);
+			
+			notFound -= occurrence@at;
+			// No traces for this occurrence, fail visit
+			if (isEmpty(tracesForOccurrence)) {
+				fail replaceVisit;
+			}
+			
+			possibilityList possibilities = [];
+
+			for (trace <- tracesForOccurrence) {
+				if (callableStr(traceValue) := trace.argument) {
+					if (actualParameter(callableArgument,_) := top(args)) {
+						list[Expr] conds = [
+							binaryOperation(
+					    		callableArgument,
+						    	scalar(string(traceValue)),
+						    	equal()
+					    	)
+						];
+						
+						tuple[list[ActualParameter] params, list[Expr] conds] unrollData = unrollCUFAArguments(top(tail(args)), trace.arrElements);
+						conds = conds + unrollData.conds;
+						
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func_array")), args): {
+								insert call(name(name(traceValue)), unrollData.params);
+							}
+						};
+							
+						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
+				 	}
+				} else if (callableArray(callableClass(_), callableStr(traceValue)) := trace.argument) {
+				
+					if (actualParameter(callableArgument,_) := top(args)) {
+					
+						callableArgumentProps = checkForInlineArray(callableArgument);
+						list[Expr] conds = [];
+
+				        if (!callableArgumentProps.inlineArray) {
+							//  is_array($callableArgument) && sizeof($callableArgument) > 1
+			         		conds = conds + [   
+				          		call(
+          							name(name("is_array")),
+          							[actualParameter(callableArgument, false)]
+      							),
+								binaryOperation(
+					            	call(
+										name(name("sizeof")),
+					            		[actualParameter(callableArgument, false)]),
+					            	scalar(integer(1)),
+					            	gt()
+				            	)
+				    		];
+				        }
+				        
+				        // is_object(callableArgumentProps.objectVar) && callableArgumentProps.methodVar == "traceValue"
+				        conds = conds + [
+				        	call(
+								name(name("is_object")),
+      							[actualParameter(callableArgumentProps.objectVar, false)]
+  							),
+		        			binaryOperation(
+			    				callableArgumentProps.methodVar,
+				    			scalar(string(traceValue)),
+				    			equal()
+			    			)
+		    			];
+				        	
+						tuple[list[ActualParameter] params, list[Expr] conds] unrollData = unrollCUFAArguments(top(tail(args)), trace.arrElements);
+						conds = conds + unrollData.conds;
+        						
+						// objectVar->traceValue()
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func_array")), args): {
+								insert methodCall(
+									callableArgumentProps.objectVar,
+    								name(name(traceValue)),
+									unrollData.params
+								);
+							}
+						};
+						
+						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
+				 	}
+				}  else if (callableArray(callableStr(traceValueClass), callableStr(traceValueMethod)) := trace.argument) {
+				
+					if (actualParameter(callableArgument,_) := top(args)) {
+					
+						callableArgumentProps = checkForInlineArray(callableArgument);
+
+						list[Expr] conds = [];
+				        
+				        if (!callableArgumentProps.inlineArray){
+							// is_array($callableArgument) && sizeof($callableArgument) > 2 
+			         		conds = conds + [ 
+			          			call(
+          							name(name("is_array")),
+          							[actualParameter(callableArgument, false)]
+      							),
+								binaryOperation(
+					            	call(
+										name(name("sizeof")),
+					            		[actualParameter(callableArgument, false)]),
+					            	scalar(integer(1)),
+					            	gt()
+				            	)
+				    		];
+				        }
+				        // callableArgumentProps.objectVar == "traceValueClass" && callableArgumentProps.methodVar == "traceValueMethod"
+			        	conds = conds + [ 
+		        			binaryOperation(
+			    				callableArgumentProps.objectVar,
+				    			scalar(string(traceValueClass)),
+				    			equal()
+				    		), 
+				    		binaryOperation(
+			    				callableArgumentProps.methodVar,
+				    			scalar(string(traceValueMethod)),
+				    			equal()
+				    		)
+					    ];
+					    
+						tuple[list[ActualParameter] params, list[Expr] conds] unrollData = unrollCUFAArguments(top(tail(args)), trace.arrElements);
+						conds = conds + unrollData.conds;
+			        
+						// objectVar::traceValue()
+						Stmt body = visit (occurrence) {
+							case call(name(name("call_user_func_array")), args): {
+								insert staticCall(
+									name(name(traceValueClass)),
+    								name(name(traceValueMethod)),
+									unrollData.params
+								);
+							}
+						};
+						
+						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
+				 	}
+			 	} else {
+			 		println("Unknown trace");
+		 			iprintln(trace);
+			 	}
+			}
+			if (possibilities == []) {
+				println("No possibilities for occurence, should not happen.");
+				iprintln(occurrence);
+			} else {
+				changedFiles += occurrence@at.path;
+				println("Changed:");
+				println(pp(occurrence));
+				result = createIfFromPossibilities(possibilities, occurrence);
+				println("Into:");
+				println(pp(result));
+				insert result;
+			}		
+		}
+	}
+	
+	println("Not found:");
+	iprintln(notFound);
+	return sys;
+}
+
+
+
+public void main() {
+	loc systemPath = |file:///ufs/chrism/php/htdocs/wordpress/|;
+	//loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
+	//loc systemPath = |file:///export/scratch1/chrism/systems/wordpress-tests/|;
+	//loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem/|;
+	//loc tracesCsv = |file:///export/scratch1/chrism/systems/wordpress-tests.csv|;
+	loc tracesCsv = |file:///ufs/chrism/php/htdocs/traces.2013-07-02_10:07:50.csv|;
+	//loc tracesCsv = |file:///export/scratch1/chrism/cufa.csv|;
+	loc build = |file:///export/scratch1/chrism/systems/wordpress.pt|;
+	//loc buildAltered = |file:///export/scratch1/chrism/systems/wordpress-tests.pt.altered|;
+
+	//traceRel allTraces = importTraces(tracesCsv);
+	//iprintln(allTraces);
+	//return;
+
+	//sys = loadPHPFiles(systemPath, addLocationAnnotations=true, addLocationAnnotations=true);
+	//iprintln(head(sys));
+
 	//writeBinaryValueFile(build, sys);
+	//for (file <- sys) {
+	//	iprintln(sys[file]);
+	//	return;
+	//}
 	sys = readBinaryValueFile(#System, build);
 	////
 	//sys = resolveIncludesWithVars(sys, systemPath);
@@ -392,11 +650,15 @@ public void main() {
 	sys = replaceStaticCallUserFuncUsage(sys);
 	//
 	traceRel allTraces = importTraces(tracesCsv);
-	iprintln(domain(allTraces["call_user_func"]));
+	//iprintln(allTraces);
+	//iprintln(sys[|file:///ufs/chrism/php/thesis/examples/testSystem/call_user_func_array_simple.php|]);
+	//iprintln(domain(allTraces["call_user_func"]));
 	//iprintln({ s.path | s <- domain(allTraces["call_user_func"])});
 	sys = replaceEvalsByTraces(sys, allTraces);
 	sys = replaceCallUserFunByTraces(sys, allTraces);
+	sys = replaceCUFAByTraces(sys, allTraces);
 	
+	//println(pp(flattenBlocks(sys[|file:///ufs/chrism/php/thesis/examples/testSystem/call_user_func_array_simple.php|])));
 	print("changedFiles");
 	iprintln(changedFiles);
 	////	

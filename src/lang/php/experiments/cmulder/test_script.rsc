@@ -2,6 +2,7 @@ module lang::php::experiments::cmulder::test_script
 
 import lang::php::ast::AbstractSyntax;
 import lang::php::util::Utils;
+import lang::php::pp::PrettyPrinter;
 import Node;
 import IO;
 import Type;
@@ -16,6 +17,12 @@ import ValueIO;
 //import lang::php::analysis::cfg::Label;
 //import lang::php::analysis::cfg::FlowEdge;
 //import lang::php::analysis::cfg::BuildCFG;
+
+layout MyLayout = [\t\n\ \r\f]*;
+//lexical Identifier = [a-z] !<< [a-z]+ !>> [a-z] \ MyKeywords;
+keyword MyKeywords = "array" | "class";
+//syntax Expression
+//	=	
 
 anno node node @ parentNode;
 
@@ -32,23 +39,43 @@ public bool isScalarArray(arr) {
 	return true;		
 }
 
+
+
 public void main() {
 	//loc file = |file:///ufs/chrism/php/thesis/examples/call_user_func.php|;
 	//loc file = |file:///ufs/chrism/php/thesis/examples/simple.php|;
-	str testStr1 = "array (0 =\> array (0 =\> class stdClass { ... }))";
-	str testStr2 = "array (0 =\> array (0 =\> class stdClass { ... }), 1 =\> array (0 =\> class stdClass { ... }, 1 =\> class stdClass { ... }, 2 =\> class stdClass { ... }))";
-	str testStr3 = "array (0 =\> \'\', 1 =\> class WP_Post { public $ID = 2; public $post_author = \'1\'; public $post_date = \'2013-06-19 11:25:15\'; public $post_date_gmt = \'2013-06-19 11:25:15\'; public $post_content = \'This is an example page. It\'s different from a blog post because it will stay in one place and will show up in your site navigation (in most themes). Most people start with an About page that introduces them to potential site visitors. It might say something like this:\n\n\<blockquote\>Hi there! I\\\'m a bike messenger by day, aspiring actor by night, and this is my blog. I live in Los Angeles, have a great dog named Jack, and I like pi&#241;a coladas. (And gettin\\\' caught in the rain.)\</blockquote\>\n\n...or s...\'; public $post_title = \'Sample Page\'; public $post_excerpt = \'\'; public $post_status = \'publish\'; public $comment_status = \'open\'; public $ping_status = \'open\'; public $post_password = \'\'; public $post_name = \'sample-page\'; public $to_ping = \'\'; public $pinged = \'\'; public $post_modified = \'2013-06-19 11:25:15\'; public $post_modified_gmt = \'2013-06-19 11:25:15\'; public $post_content_filtered = \'\'; public $post_parent = 0; public $guid = \'http://127.0.0.1:9999/wordpress/?page_id=2\'; public $menu_order = 0; public $post_type = \'page\'; public $post_mime_type = \'\'; public $comment_count = \'0\'; public $filter = \'raw\' }, 2 =\> 0, 3 =\> array (\'depth\' =\> 0, \'show_date\' =\> \'\', \'date_format\' =\> \'F j, Y\', \'child_of\' =\> 0, \'exclude\' =\> \'\', \'title_li\' =\> \'\', \'echo\' =\> FALSE, \'authors\' =\> \'\', \'sort_column\' =\> \'menu_order, post_title\', \'link_before\' =\> \'\', \'link_after\' =\> \'\', \'walker\' =\> \'\', \'menu_class\' =\> \'nav-menu\', \'menu\' =\> \'\', \'container\' =\> \'div\', \'container_class\' =\> \'\', \'container_id\' =\> \'\', \'menu_id\' =\> \'\', \'fallback_cb\' =\> \'wp_page_menu\', \'before\' =\> \'\', \'after\' =\> \'\', \'items_wrap\' =\> \'\<ul id=\"%1$s\" class=\"%2$s\"\>%3$s\</ul\>\', \'theme_location\' =\> \'primary\', \'show_home\' =\> TRUE, \'hierarchical\' =\> 0, \'has_children\' =\> FALSE), 4 =\> 0)";
-
-	int i = -1;
-		
-	list[int] stack = [];
-	for (/<el:\d+> =\>/ := testStr2) {
-		stack = stack + toInt(el);
-		println("el:<el>");
-	}
+	scriptje = parsePHPStatement("for ($a = 2;($a \<= func_num_args());$a++) {
+        $args[] = func_get_arg($a);
+    }");
 	
-	iprintln(stack);
+	/*new(
+                    expr(var(name(name("widget_class")))),
+                    []);*/
+      /*
+  	scriptje =  binaryOperation(
+                  binaryOperation(
+                    binaryOperation(
+                      var(name(name("max_depth"))),
+                      scalar(integer(0)),
+                      equal()),
+                    binaryOperation(
+                      var(name(name("max_depth"))),
+                      binaryOperation(
+                        var(name(name("depth"))),
+                        scalar(integer(1)),
+                        plus()),
+                      gt()),
+                    booleanOr()),
+                  isSet([fetchArrayDim(
+                        var(name(name("children_elements"))),
+                        someExpr(var(name(name("id")))))]),
+                  booleanAnd());
+               */   
+  	iprintln(scriptje);
+  	println(pp(scriptje));
+	//iprintln(loadPHPFile(|file:///ufs/chrism/php/htdocs/wordpress/wp-includes/class-wp-walker.php|, false, false));
 	return;
+
 	loc build = |file:///export/scratch1/chrism/systems/wordpress-tests.pt|;
 	
 	//sys = loadPHPFiles(systemPath);
