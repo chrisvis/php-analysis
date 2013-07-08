@@ -699,3 +699,24 @@ public void main() {
 
 	return;
 }
+
+public str numDiffParams (traceRel allTraces) {
+	str output = "\\begin{table}[!th]\n\\begin{tabular}{lr}\n\\hline\n\tLocation & \\# different arguments \\\\\n\\hline\n";
+
+	tuple[int, loc] sizeX(tuple[loc, tuple[callable, int]] t) {
+		return <size(allTraces["call_user_func_array"][t[0]]), t[0]>;
+	}
+
+	results = mapper(allTraces["call_user_func_array"], sizeX);
+
+	for(n <- reverse(sort(domain(results)))) {
+		for(item <- results[n]) {
+			path = replaceAll(item.path, "/ufs/chrism/php/htdocs/wordpress_plugins/", "");
+			output += "\t<path> (line: <item.begin.line>) & <n> \\\\\n";
+		}
+	}
+
+	output += "\\hline\n\\end{tabular}\n\\caption{Varaity of arguments}\n\\label{stats:varaity}\n\\end{table}\n";
+	return output;
+	
+}
