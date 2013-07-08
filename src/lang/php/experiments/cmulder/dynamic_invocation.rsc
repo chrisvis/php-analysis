@@ -251,9 +251,22 @@ public Expr combineBoolExprs(list[Expr] exprs) =
 
 public System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 	notFound = domain(allTraces["call_user_func"]);
-			
+	set[loc] locs = {};
+	visit (sys) {
+		case occ:call(name(name("call_user_func")), _): {
+			locs += occ@at;
+		}
+	}
+	
 	sys = replaceVisit:visit (sys) {
-		case occurrence:exprstmt(/call(name(name("call_user_func")), args)): {
+		case occurrence:Stmt s: {
+			if ("at" notin getAnnotations(s) || s@at notin locs) {
+				fail replaceVisit;
+			}
+			args = [];
+			if (/call(name(name("call_user_func")), _args) := occurrence) {
+				args = _args;
+			}
 			
 			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
 			println(occurrence@at);
@@ -451,8 +464,25 @@ public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments
 public System replaceCUFAByTraces(System sys, traceRel allTraces) {
 	notFound = domain(allTraces["call_user_func_array"]);
 
+	set[loc] locs = {};
+	visit (sys) {
+		case occ:call(name(name("call_user_func_array")), _): {
+			locs += occ@at;
+		}
+	}
+	
+	set[loc] notFoundLocs = locs;
+	
 	sys = replaceVisit:visit (sys) {
-		case occurrence:exprstmt(/call(name(name("call_user_func_array")), args)): {
+		case occurrence:Stmt s: {
+			if ("at" notin getAnnotations(s) || s@at notin locs) {
+				fail replaceVisit;
+			}
+			notFoundLocs -= s@at;
+			args = [];
+			if (/call(name(name("call_user_func_array")), _args) := occurrence) {
+				args = _args;
+			}
 			tracesForOccurrence = allTraces["call_user_func_array"][occurrence@at];
 			println(occurrence@at);
 			
