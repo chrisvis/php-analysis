@@ -66,12 +66,12 @@ public int countArrayElements(str string) {
 		}
 
 		// remove () sets with content (nested arrays)
-		for (/<block:\([^\)]*\)>/ := string) {
+		for (/<block:\([^\(\)]*\)>/ := string) {
 			string = replaceAll(string, block, "");
 		}
-		
+
 		// remove {} sets with content (objects)
-		for (/<block:\{[^\}]*\}>/ := string) {
+		for (/<block:\{[^\{\}]*\}>/ := string) {
 			string = replaceAll(string, block, "");
 		}
 	}
