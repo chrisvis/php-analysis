@@ -455,16 +455,12 @@ public str pp(\return(noExpr())) = "return;";
 //	| static(list[StaticVar] vars)
 public str pp(Stmt::static(list[StaticVar] vars)) {
 	parsedVars = [];
-	iprintln(vars);
 	for(v<-vars) {
-		println("in loop");
-		iprintln(v);
 		switch(v) {
 			case staticVar(str name, someExpr(Expr defaultValue)):  parsedVars = parsedVars + ["$<name> = <pp(defaultValue)>"];
 			case staticVar(str name, noExpr()):  parsedVars = parsedVars + ["$<name>"];
 		}
 	}
-	iprintln(parsedVars);
 	return "static <intercalate(",",parsedVars)>;";
 }
 
