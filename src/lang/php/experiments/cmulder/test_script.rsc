@@ -73,7 +73,25 @@ public void main() {
                */   
   	iprintln(scriptje);
   	println(pp(scriptje));
-	//iprintln(loadPHPFile(|file:///ufs/chrism/php/htdocs/wordpress/wp-includes/class-wp-walker.php|, false, false));
+	scr = loadPHPFile(|file:///ufs/chrism/php/htdocs/wordpress/wp-includes/capabilities.php|);
+	
+	set[loc] cufaLocs = {};
+	visit (scr) {
+		case occ:call(name(name("call_user_func_array")), args): {
+			cufaLocs += occ@at;
+			//iprintln(occ);
+		}
+	}
+	
+	visit (scr) {
+		case Stmt s: {
+			if (s@at in cufaLocs) {
+				iprintln(s);
+			}
+		}
+	}
+	
+	iprintln(cufaLocs);
 	return;
 
 	loc build = |file:///export/scratch1/chrism/systems/wordpress-tests.pt|;

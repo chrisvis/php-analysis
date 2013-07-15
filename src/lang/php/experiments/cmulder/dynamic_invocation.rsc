@@ -645,25 +645,30 @@ public System replaceCUFAByTraces(System sys, traceRel allTraces) {
 	
 	println("Not found:");
 	iprintln(notFound);
+	println("Not found CUFA");
+	iprintln(notFoundLocs);
 	return sys;
 }
 
-
+traceRel allTraces;
 
 public void main() {
-	loc systemPath = |file:///ufs/chrism/php/htdocs/wordpress/|;
+	loc systemPath = |file:///ufs/chrism/php/htdocs/wordpress_plugins/|;
 	//loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
 	//loc systemPath = |file:///export/scratch1/chrism/systems/wordpress-tests/|;
 	//loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem/|;
 	//loc tracesCsv = |file:///export/scratch1/chrism/systems/wordpress-tests.csv|;
-	loc tracesCsv = |file:///ufs/chrism/php/htdocs/traces.2013-07-02_10:07:50.csv|;
+	loc tracesCsv = |file:///ufs/chrism/php/htdocs/traces.wordpress_plugins_current.2013-07-12_15:07:11.csv|;
 	//loc tracesCsv = |file:///export/scratch1/chrism/cufa.csv|;
-	loc build = |file:///export/scratch1/chrism/systems/wordpress.pt|;
+	loc build = |file:///export/scratch1/chrism/systems/wordpress_plugins.pt|;
 	//loc buildAltered = |file:///export/scratch1/chrism/systems/wordpress-tests.pt.altered|;
 
-	//traceRel allTraces = importTraces(tracesCsv);
+	//traceRel allTraces = importTraces(|file:///ufs/chrism/php/htdocs/traces.wordpress_plugins_current.2013-07-03_13:32:46.csv|);
 	//iprintln(allTraces);
-	//return;
+	allTraces = importTraces(tracesCsv);
+	iprintln(allTraces);
+	println(numDiffParams(allTraces));
+	return;
 
 	//sys = loadPHPFiles(systemPath, addLocationAnnotations=true, addLocationAnnotations=true);
 	//iprintln(head(sys));
@@ -713,6 +718,11 @@ public str numDiffParams (traceRel allTraces) {
 		for(item <- results[n]) {
 			path = replaceAll(item.path, "/ufs/chrism/php/htdocs/wordpress_plugins/", "");
 			output += "\t<path> (line: <item.begin.line>) & <n> \\\\\n";
+		
+			if (n == 1) {
+				println(item);
+				iprintln(allTraces["call_user_func_array"][item]);
+			}
 		}
 	}
 
