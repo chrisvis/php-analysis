@@ -250,13 +250,18 @@ public Expr combineBoolExprs(list[Expr] exprs) =
 
 
 public System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
-	notFound = domain(allTraces["call_user_func"]);
+	notFoundTraceLocs = domain(allTraces["call_user_func"]);
 	set[loc] locs = {};
 	visit (sys) {
 		case occ:call(name(name("call_user_func")), _): {
 			locs += occ@at;
 		}
 	}
+	
+	notFoundLocs = locs;
+	println("CUF in project: <size(locs)>");
+	int cufMatched = 0;
+	int cufTrace = 0;
 	
 	sys = replaceVisit:visit (sys) {
 		case occurrence:Stmt s: {
@@ -268,15 +273,19 @@ public System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 				args = _args;
 			}
 			
-			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
-			println(occurrence@at);
+			cufMatched = cufMatched + 1;
 			
-			notFound -= occurrence@at;
+			tracesForOccurrence = allTraces["call_user_func"][occurrence@at];
+			//println(occurrence@at);
+			
+			notFoundTraceLocs -= occurrence@at;
 			// No traces for this occurrence, fail visit
 			if (isEmpty(tracesForOccurrence)) {
 				fail replaceVisit;
 			}
 			
+			cufTrace = cufTrace + 1;
+			notFoundLocs -= occurrence@at;
 			possibilityList possibilities = [];
 
 			for (trace <- tracesForOccurrence) {
@@ -399,28 +408,35 @@ public System replaceCallUserFunByTraces(System sys, traceRel allTraces) {
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
 			 	} else {
-			 		println("Unknown trace");
+			 		//println("Unknown trace");
 		 			iprintln(trace);
 			 	}
 			}
 			if (possibilities == []) {
-				println("No possibilities for occurence, should not happen.");
+				//println("No possibilities for occurence, should not happen.");
 				iprintln(occurrence);
 			} else {
 				changedFiles += occurrence@at.path;
-				println("Changed:");
-				println(pp(occurrence));
+				//println("Changed:");
+				//println(pp(occurrence));
 				result = createIfFromPossibilities(possibilities, occurrence);
-				println("Into:");
-				println(pp(result));
+				//println("Into:");
+				//println(pp(result));
 				insert result;
 			}		
 		}
 	}
-	
-	println("Not found:");
-	iprintln(notFound);
+	println("cufMatched: <cufMatched>");
+	println("cufTrace: <cufTrace>");
+	//println("Not found:");
+	ppLocs(notFoundLocs);
 	return sys;
+}
+
+public void ppLocs(set[loc] locs) {
+	for(l <- locs) {
+		println("<l.path>:<l.begin.line>");
+	}
 }
 
 public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments(actualParameter(arrArgument,_), int numElements) {
@@ -462,35 +478,50 @@ public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments
 public tuple[list[ActualParameter] params, list[Expr] conds] unrollCUFAArguments(a) = <[],[]>;
 
 public System replaceCUFAByTraces(System sys, traceRel allTraces) {
-	notFound = domain(allTraces["call_user_func_array"]);
 
+
+	
+	notFoundTraceLocs = domain(allTraces["call_user_func_array"]);
+
+	str output = "";
+	
 	set[loc] locs = {};
 	visit (sys) {
 		case occ:call(name(name("call_user_func_array")), _): {
 			locs += occ@at;
+			output =  output  + "<occ@at.path>:<occ@at.begin.line>\n"; 
 		}
 	}
-	
+
 	set[loc] notFoundLocs = locs;
+	
+	println("CUFA in project: <size(locs)>");
+	int cufaMatched = 0;
+	int cufaTrace = 0;
 	
 	sys = replaceVisit:visit (sys) {
 		case occurrence:Stmt s: {
 			if ("at" notin getAnnotations(s) || s@at notin locs) {
 				fail replaceVisit;
 			}
-			notFoundLocs -= s@at;
 			args = [];
 			if (/call(name(name("call_user_func_array")), _args) := occurrence) {
 				args = _args;
 			}
 			tracesForOccurrence = allTraces["call_user_func_array"][occurrence@at];
-			println(occurrence@at);
+			//println(occurrence@at);
 			
-			notFound -= occurrence@at;
+			cufaMatched = cufaMatched + 1;
+			
+			
+			notFoundTraceLocs -= occurrence@at;
 			// No traces for this occurrence, fail visit
 			if (isEmpty(tracesForOccurrence)) {
 				fail replaceVisit;
 			}
+			
+			notFoundLocs -= s@at;
+			cufaTrace = cufaTrace + 1;
 			
 			possibilityList possibilities = [];
 
@@ -624,104 +655,124 @@ public System replaceCUFAByTraces(System sys, traceRel allTraces) {
 						possibilities = possibilities + <combineBoolExprs(conds), [body]>;
 				 	}
 			 	} else {
-			 		println("Unknown trace");
-		 			iprintln(trace);
+			 		//println("Unknown trace");
+		 			//iprintln(trace);
+		 			1;
 			 	}
 			}
 			if (possibilities == []) {
-				println("No possibilities for occurence, should not happen.");
-				iprintln(occurrence);
+				//println("No possibilities for occurence, should not happen.");
+				//iprintln(occurrence);
+				1;
 			} else {
 				changedFiles += occurrence@at.path;
-				println("Changed:");
-				println(pp(occurrence));
+				//println("Changed:");
+				//println(pp(occurrence));
 				result = createIfFromPossibilities(possibilities, occurrence);
-				println("Into:");
-				println(pp(result));
+				//println("Into:");
+				//println(pp(result));
 				insert result;
 			}		
 		}
 	}
 	
-	println("Not found:");
-	iprintln(notFound);
-	println("Not found CUFA");
-	iprintln(notFoundLocs);
+	//println("Not found trace locs:");
+	//iprintln(notFoundTraceLocs);
+	//println("Not found CUFA");
+	ppLocs(notFoundLocs);
+	
+	println("cufaMatched: <cufaMatched>");
+	println("cufaTrace: <cufaTrace>");
+	
 	return sys;
 }
 
-traceRel allTraces;
-
 public void main() {
-	loc systemPath = |file:///ufs/chrism/php/htdocs/wordpress_plugins/|;
-	//loc tracesCsv = |file:///export/scratch1/chrism/testTraces.csv|;
-	//loc systemPath = |file:///export/scratch1/chrism/systems/wordpress-tests/|;
-	//loc systemPath = |file:///ufs/chrism/php/thesis/examples/testSystem/|;
-	//loc tracesCsv = |file:///export/scratch1/chrism/systems/wordpress-tests.csv|;
-	loc tracesCsv = |file:///ufs/chrism/php/htdocs/traces.wordpress_plugins_current.2013-07-12_15:07:11.csv|;
-	//loc tracesCsv = |file:///export/scratch1/chrism/cufa.csv|;
-	loc build = |file:///export/scratch1/chrism/systems/wordpress_plugins.pt|;
-	//loc buildAltered = |file:///export/scratch1/chrism/systems/wordpress-tests.pt.altered|;
-
-	//traceRel allTraces = importTraces(|file:///ufs/chrism/php/htdocs/traces.wordpress_plugins_current.2013-07-03_13:32:46.csv|);
-	//iprintln(allTraces);
-	allTraces = importTraces(tracesCsv);
-	iprintln(allTraces);
-	println(numDiffParams(allTraces));
+	generateTable();
 	return;
-
+	
+	loc systemPath = |file:///ufs/chrism/php/htdocs/wordpress_1/|;
+	loc tracesCsv = |file:///ufs/chrism/php/htdocs/wordpress_1.csv|;
+	
+	loc build = |file:///export/scratch1/chrism/systems/wordpress_1.pt|;
+	
 	//sys = loadPHPFiles(systemPath, addLocationAnnotations=true, addLocationAnnotations=true);
-	//iprintln(head(sys));
-
 	//writeBinaryValueFile(build, sys);
-	//for (file <- sys) {
-	//	iprintln(sys[file]);
-	//	return;
-	//}
 	sys = readBinaryValueFile(#System, build);
-	////
+
 	//sys = resolveIncludesWithVars(sys, systemPath);
-	sys = replaceStaticEvalUsage(sys);
-	sys = replaceStaticCallUserFuncUsage(sys);
-	//
+	//sys = replaceStaticEvalUsage(sys);
+	//sys = replaceStaticCallUserFuncUsage(sys);
+
 	traceRel allTraces = importTraces(tracesCsv);
-	//iprintln(allTraces);
-	//iprintln(sys[|file:///ufs/chrism/php/thesis/examples/testSystem/call_user_func_array_simple.php|]);
-	//iprintln(domain(allTraces["call_user_func"]));
-	//iprintln({ s.path | s <- domain(allTraces["call_user_func"])});
 	sys = replaceEvalsByTraces(sys, allTraces);
 	sys = replaceCallUserFunByTraces(sys, allTraces);
 	sys = replaceCUFAByTraces(sys, allTraces);
 	
-	//println(pp(flattenBlocks(sys[|file:///ufs/chrism/php/thesis/examples/testSystem/call_user_func_array_simple.php|])));
-	print("changedFiles");
-	iprintln(changedFiles);
-	////	
-	//writeBinaryValueFile(buildAltered, sys);
-	//sys = readBinaryValueFile(#System, buildAltered);
-	//generateTestOuput(sys, |file:///ufs/chrism/php/thesis/examples/testSystem.php|);
-	generateOutput(sys, |file:///tmp/output/|, systemPath);
+	println(numDiffParams(allTraces, "call_user_func"));
+	println(numDiffParams(allTraces, "call_user_func_array"));
+	//generateOutput(sys, |file:///tmp/output/|, systemPath);
 
 	return;
 }
 
-public str numDiffParams (traceRel allTraces) {
+public void generateTable() {
+//alias traceRel = rel[str function, loc location, tuple[callable argument, int arrElements] arguments];
+
+	list[traceRel] traces = [
+		importTraces(|file:///ufs/chrism/php/htdocs/wordpress.csv|),
+		importTraces(|file:///ufs/chrism/php/htdocs/wordpress_1.csv|),
+		importTraces(|file:///ufs/chrism/php/htdocs/wordpress_2.csv|),
+		importTraces(|file:///ufs/chrism/php/htdocs/wordpress_3.csv|),
+		importTraces(|file:///ufs/chrism/php/htdocs/wordpress_4.csv|)
+	];
+	
+	map[str, map[str,tuple[int,int,int,int,int]]] counts = ();
+	
+	
+	for (func <- ["call_user_func", "call_user_func_array"]) {
+		counts[func] = ();
+		for(int n <- [0 .. 5]) {
+			println(func);
+			for(<loc l, <callable c,int i>> <- traces[n][func]) {
+				path = l.path;
+				path = replaceAll(path, "/ufs/chrism/php/htdocs/wordpress/", "");
+				path = replaceAll(path, "/ufs/chrism/php/htdocs/wordpress_1/", "");
+				path = replaceAll(path, "/ufs/chrism/php/htdocs/wordpress_2/", "");
+				path = replaceAll(path, "/ufs/chrism/php/htdocs/wordpress_3/", "");
+				path = replaceAll(path, "/ufs/chrism/php/htdocs/wordpress_4/", "");
+				path = "<path>:<l.begin.line>";
+				//println(l);
+				if (path notin counts[func]) { 
+					counts[func][path] = <0,0,0,0,0>;
+				}
+				counts[func][path][n] = size(traces[n][func][l]);
+			}
+		}
+	}
+	
+	iprint(counts);
+	
+	
+}
+
+public str numDiffParams (traceRel allTraces, funcName) {
 	str output = "\\begin{table}[!th]\n\\begin{tabular}{lr}\n\\hline\n\tLocation & \\# different arguments \\\\\n\\hline\n";
 
 	tuple[int, loc] sizeX(tuple[loc, tuple[callable, int]] t) {
-		return <size(allTraces["call_user_func_array"][t[0]]), t[0]>;
+		return <size(allTraces[funcName][t[0]]), t[0]>;
 	}
 
-	results = mapper(allTraces["call_user_func_array"], sizeX);
+	results = mapper(allTraces[funcName], sizeX);
 
 	for(n <- reverse(sort(domain(results)))) {
 		for(item <- results[n]) {
-			path = replaceAll(item.path, "/ufs/chrism/php/htdocs/wordpress_plugins/", "");
+			path = replaceAll(item.path, "/ufs/chrism/php/htdocs/wordpress_1/", "");
 			output += "\t<path> (line: <item.begin.line>) & <n> \\\\\n";
 		
 			if (n == 1) {
 				println(item);
-				iprintln(allTraces["call_user_func_array"][item]);
+				iprintln(allTraces[funcName][item]);
 			}
 		}
 	}
